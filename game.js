@@ -46,6 +46,9 @@ const CONFIG = {
     playerBody: '#38bdf8',
     playerGlow: 'rgba(56, 189, 248, 0.35)',
     playerEye: '#0f172a',
+    playerHat: '#f43f5e',
+    playerHatBand: '#fbbf24',
+    playerHatBrim: '#e11d48',
     particle: '#38bdf8',
   }
 };
@@ -484,6 +487,67 @@ class Player {
       ctx.lineTo(7 + this.facing * 2, eyeY);
       ctx.stroke();
     }
+
+    // Procedural Animated Hat
+    this.drawHat(ctx, w, h);
+
+    ctx.restore();
+  }
+
+  drawHat(ctx, w, h) {
+    ctx.save();
+
+    // Top of head is at y = -h
+    const headTopY = -h;
+
+    // Dynamic hat tilt based on movement velocity and facing direction
+    const hatTilt = (this.vx / CONFIG.physics.moveSpeed) * 0.14 + (this.facing * 0.05);
+
+    ctx.translate(0, headTopY + 2);
+    ctx.rotate(hatTilt);
+
+    // 1. Hat Brim
+    ctx.fillStyle = CONFIG.colors.playerHatBrim;
+    ctx.strokeStyle = '#9f1239';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, (w / 2) + 6, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 2. Hat Crown (Stylized Cap / Cone)
+    const crownWidth = w * 0.72;
+    const crownHeight = 16;
+    const crownGradient = ctx.createLinearGradient(-crownWidth / 2, -crownHeight, crownWidth / 2, 0);
+    crownGradient.addColorStop(0, '#fb7185');
+    crownGradient.addColorStop(1, CONFIG.colors.playerHat);
+
+    ctx.fillStyle = crownGradient;
+    ctx.strokeStyle = '#9f1239';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(-crownWidth / 2, 0);
+    ctx.quadraticCurveTo(-crownWidth * 0.35, -crownHeight, -2 + this.facing * 3, -crownHeight);
+    ctx.quadraticCurveTo(crownWidth * 0.35, -crownHeight, crownWidth / 2, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Hat Band (Golden Accent Ribbon)
+    ctx.fillStyle = CONFIG.colors.playerHatBand;
+    ctx.strokeStyle = '#d97706';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -crownWidth / 2 + 1, -4.5, crownWidth - 2, 4, 1.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // 4. Pom-pom / Golden Star on Top of Hat
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath();
+    ctx.arc(-2 + this.facing * 3, -crownHeight, 3.5, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }
