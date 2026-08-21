@@ -1,0 +1,11 @@
+# Auto-detect text files and normalize line endings
+* text=auto eol=lf
+
+# Explicitly ensure source files use LF
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf

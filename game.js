@@ -46,9 +46,6 @@ const CONFIG = {
     playerBody: '#38bdf8',
     playerGlow: 'rgba(56, 189, 248, 0.35)',
     playerEye: '#0f172a',
-    playerHat: '#f43f5e',
-    playerHatBand: '#fbbf24',
-    playerHatBrim: '#e11d48',
     particle: '#38bdf8',
   }
 };
@@ -487,57 +484,6 @@ class Player {
       ctx.lineTo(7 + this.facing * 2, eyeY);
       ctx.stroke();
     }
-
-    // -------------------------------------------------------------------------
-    // Procedural Stylish Hat
-    // -------------------------------------------------------------------------
-    ctx.save();
-    
-    // Slight hat tilt when moving
-    const hatTilt = (this.vx / CONFIG.physics.moveSpeed) * 0.06;
-    ctx.rotate(hatTilt);
-
-    // 1. Hat Crown (Cap Dome)
-    const hatWidth = 24;
-    const hatHeight = 10;
-    const hatX = -hatWidth / 2 + this.facing * 1.5;
-    const hatY = -h - 8;
-
-    const hatGradient = ctx.createLinearGradient(hatX, hatY, hatX, hatY + hatHeight);
-    hatGradient.addColorStop(0, '#fb7185');
-    hatGradient.addColorStop(1, CONFIG.colors.playerHat);
-    ctx.fillStyle = hatGradient;
-    ctx.strokeStyle = '#be123c';
-    ctx.lineWidth = 1.5;
-
-    this.drawRoundedRect(ctx, hatX, hatY, hatWidth, hatHeight, 5);
-    ctx.fill();
-    ctx.stroke();
-
-    // 2. Hat Band (Golden Accent Ribbon)
-    ctx.fillStyle = CONFIG.colors.playerHatBand;
-    ctx.fillRect(hatX - 1, -h - 1.5, hatWidth + 2, 3);
-
-    // 3. Hat Brim / Visor (Extends forward in facing direction)
-    ctx.fillStyle = CONFIG.colors.playerHatBrim;
-    ctx.strokeStyle = '#be123c';
-    ctx.lineWidth = 1.5;
-    const brimWidth = 30;
-    const brimHeight = 4;
-    const brimX = this.facing > 0 ? -12 : -18;
-    const brimY = -h + 1;
-
-    this.drawRoundedRect(ctx, brimX, brimY, brimWidth, brimHeight, 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // 4. Top Button / Pom-pom
-    ctx.fillStyle = CONFIG.colors.playerHatBand;
-    ctx.beginPath();
-    ctx.arc(hatX + hatWidth / 2, hatY - 1, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
 
     ctx.restore();
   }
