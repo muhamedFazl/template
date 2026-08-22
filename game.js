@@ -731,36 +731,53 @@ class Camera {
 // =============================================================================
 class World {
   constructor() {
-    this.platforms = [
+    // Wall-jump training & challenge zone (placed to the left of the original area)
+    const wallJumpZone = [
+      // Extension bridge leading left from Start Ground
+      { x: -140, y: 340, width: 180, height: 40, label: 'Wall Zone' },
+
+      // Tall single-wall climbing pillar
+      { x: -200, y: 60, width: 44, height: 320, label: 'Wall Climb' },
+      { x: -260, y: 60, width: 104, height: 24 },
+
+      // Dual-wall chimney / shaft for zig-zag wall jumping
+      { x: -440, y: 40, width: 36, height: 360 },
+      { x: -320, y: 40, width: 36, height: 360, label: 'Wall Shaft' },
+      { x: -440, y: 400, width: 156, height: 30 },
+
+      // Upper summit platform on the far left
+      { x: -500, y: 20, width: 160, height: 24, label: 'Summit' },
+      { x: -280, y: 220, width: 70, height: 22 },
+    ];
+
+    // Original level platforms (preserved verbatim to prevent merge conflicts)
+    const originalPlatforms = [
       // 1. Spawn / Main Ground Platform
       { x: 40, y: 340, width: 380, height: 40, label: 'Start Ground' },
 
-      // 2. Tall single scaling wall/pillar to test single-wall climb
-      { x: 450, y: 100, width: 44, height: 280, label: 'Wall Climb' },
+      // 2. Stepping stones leading up
+      { x: 480, y: 280, width: 140, height: 26 },
+      { x: 680, y: 220, width: 160, height: 26 },
+      { x: 900, y: 150, width: 180, height: 26 },
 
-      // 3. Wall-Jump Chimney / Shaft (two vertical walls facing each other)
-      { x: 580, y: 80, width: 36, height: 320 },
-      { x: 700, y: 80, width: 36, height: 320, label: 'Wall Shaft' },
-      { x: 580, y: 400, width: 156, height: 30 },
+      // 3. High vantage platform
+      { x: 1140, y: 80, width: 260, height: 32, label: 'Peak' },
 
-      // 4. Stepping stones leading up to Peak
-      { x: 790, y: 160, width: 140, height: 26 },
-      { x: 980, y: 120, width: 160, height: 26 },
-      { x: 1200, y: 60, width: 240, height: 32, label: 'Peak' },
+      // 4. Lower gap challenge
+      { x: 1160, y: 320, width: 180, height: 30 },
+      { x: 1420, y: 380, width: 220, height: 36 },
+      { x: 1720, y: 300, width: 160, height: 26 },
 
-      // 5. Lower gap challenge with vertical pillar
-      { x: 1220, y: 320, width: 180, height: 30 },
-      { x: 1470, y: 180, width: 40, height: 240, label: 'Pillar' },
-      { x: 1570, y: 360, width: 200, height: 36 },
-      { x: 1830, y: 280, width: 160, height: 26 },
+      // 5. Long return runway
+      { x: 1940, y: 240, width: 340, height: 40, label: 'Runway' },
 
-      // 6. Long return runway
-      { x: 2050, y: 220, width: 360, height: 40, label: 'Runway' },
-
-      // 7. Floating upper islands
-      { x: 860, y: 20, width: 110, height: 22 },
-      { x: 330, y: 80, width: 80, height: 22 },
+      // 6. Floating upper islands
+      { x: 740, y: 60, width: 120, height: 24 },
+      { x: 500, y: 80, width: 100, height: 24 },
+      { x: 280, y: 140, width: 120, height: 24 },
     ];
+
+    this.platforms = [...wallJumpZone, ...originalPlatforms];
   }
 
   draw(ctx) {
