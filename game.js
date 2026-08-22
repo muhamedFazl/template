@@ -54,12 +54,6 @@ const CONFIG = {
     playerHatBand: '#fbbf24',
     playerHatBrim: '#e11d48',
     particle: '#38bdf8',
-    coin: '#fbbf24',
-    coinGlow: 'rgba(251, 191, 36, 0.35)',
-    coinBorder: '#d97706',
-    gem: '#c084fc',
-    gemGlow: 'rgba(192, 132, 252, 0.45)',
-    gemBorder: '#9333ea',
     checkpointActive: '#10b981',
     checkpointInactive: '#ef4444',
     checkpointGlow: 'rgba(16, 185, 129, 0.4)',
@@ -297,324 +291,7 @@ class ParticleSystem {
 }
 
 // =============================================================================
-// 4. FLOATING TEXT SYSTEM (Score Popups)
-// =============================================================================
-class FloatingTextSystem {
-  constructor() {
-    this.texts = [];
-  }
-
-  add(x, y, text, color = '#fbbf24') {
-    this.texts.push({
-      x,
-      y,
-      text,
-      color,
-      lifetime: 0.85,
-      maxLife: 0.85,
-      vy: -70,
-    });
-  }
-
-  update(dt) {
-    for (let i = this.texts.length - 1; i >= 0; i--) {
-      const t = this.texts[i];
-      t.lifetime -= dt;
-      if (t.lifetime <= 0) {
-        this.texts.splice(i, 1);
-        continue;
-      }
-      t.y += t.vy * dt;
-      t.vy += 35 * dt; // slight upward deceleration
-    }
-  }
-
-  draw(ctx) {
-    ctx.save();
-    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    for (const t of this.texts) {
-      const progress = t.lifetime / t.maxLife;
-      const alpha = Math.min(1, progress * 1.6);
-      const scale = 1 + (1 - progress) * 0.25;
-
-      ctx.save();
-      ctx.translate(t.x, t.y);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = alpha;
-
-      // Dark drop shadow outline
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.lineWidth = 3.5;
-      ctx.lineJoin = 'round';
-      ctx.strokeText(t.text, 0, 0);
-
-      // Bright text fill
-      ctx.fillStyle = t.color;
-      ctx.fillText(t.text, 0, 0);
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-}
-
-// =============================================================================
-// 5. COLLECTIBLE (Coins & Gems)
-// =============================================================================
-class Collectible {
-  constructor(x, y, type = 'coin') {
-    this.x = x;
-    this.y = y;
-    this.type = type; // 'coin' | 'gem'
-    this.collected = false;
-
-    if (this.type === 'gem') {
-      this.width = 24;
-      this.height = 26;
-      this.value = 500;
-      this.color = CONFIG.colors.gem;
-      this.glowColor = CONFIG.colors.gemGlow;
-      this.borderColor = CONFIG.colors.gemBorder;
-    } else {
-      this.width = 20;
-      this.height = 20;
-      this.value = 100;
-      this.color = CONFIG.colors.coin;
-      this.glowColor = CONFIG.colors.coinGlow;
-      this.borderColor = CONFIG.colors.coinBorder;
-    }
-
-    this.animTimer = Math.random() * Math.PI * 2;
-    this.bobOffset = Math.random() * Math.PI * 2;
-    this.spinOffset = Math.random() * Math.PI * 2;
-    this.twinkleTimer = 0.4 + Math.random() * 0.8;
-  }
-
-  get centerX() {
-    return this.x + this.width / 2;
-  }
-
-  get centerY() {
-    return this.y + this.height / 2;
-  }
-
-  get currentY() {
-    // Sinusoidal floating/bobbing
-    const bobAmplitude = this.type === 'gem' ? 5 : 4;
-    const bobFrequency = this.type === 'gem' ? 3.0 : 3.6;
-    return this.y + Math.sin(this.animTimer * bobFrequency + this.bobOffset) * bobAmplitude;
-  }
-
-  update(dt, particleSystem) {
-    if (this.collected) return;
-    this.animTimer += dt;
-
-    // Passive sparkle twinkle for gems
-    if (this.type === 'gem') {
-      this.twinkleTimer -= dt;
-      if (this.twinkleTimer <= 0) {
-        this.twinkleTimer = 0.6 + Math.random() * 0.8;
-        if (particleSystem) {
-          particleSystem.emit(
-            this.centerX + (Math.random() - 0.5) * 16,
-            this.currentY + this.height / 2 + (Math.random() - 0.5) * 16,
-            1,
-            {
-              color: '#ffffff',
-              sizeMin: 1.5,
-              sizeMax: 3.5,
-              speedMin: 6,
-              speedMax: 20,
-              lifeMin: 0.25,
-              lifeMax: 0.5,
-              gravity: -15,
-            }
-          );
-        }
-      }
-    }
-  }
-
-  checkCollision(player) {
-    if (this.collected) return false;
-    const curY = this.currentY;
-    return (
-      player.x < this.x + this.width &&
-      player.x + player.width > this.x &&
-      player.y < curY + this.height &&
-      player.y + player.height > curY
-    );
-  }
-
-  collect(particleSystem, floatingTexts) {
-    if (this.collected) return 0;
-    this.collected = true;
-
-    const curCenterY = this.currentY + this.height / 2;
-    if (particleSystem) {
-      particleSystem.emitCollect(
-        this.centerX,
-        curCenterY,
-        this.color,
-        this.type === 'gem' ? 24 : 16
-      );
-    }
-    if (floatingTexts) {
-      floatingTexts.add(
-        this.centerX,
-        curCenterY - 12,
-        `+${this.value}`,
-        this.type === 'gem' ? '#e879f9' : '#fbbf24'
-      );
-    }
-    return this.value;
-  }
-
-  draw(ctx) {
-    if (this.collected) return;
-
-    ctx.save();
-    const curY = this.currentY;
-    const cx = this.x + this.width / 2;
-    const cy = curY + this.height / 2;
-
-    ctx.translate(cx, cy);
-
-    if (this.type === 'coin') {
-      this.drawCoin(ctx);
-    } else {
-      this.drawGem(ctx);
-    }
-
-    ctx.restore();
-  }
-
-  drawCoin(ctx) {
-    // 3D Horizontal rotation effect
-    const spin = Math.cos(this.animTimer * 3.6 + this.spinOffset);
-    const scaleX = Math.abs(spin) * 0.75 + 0.25;
-    const facingFront = spin >= 0;
-
-    // Glowing aura
-    ctx.fillStyle = this.glowColor;
-    ctx.beginPath();
-    ctx.arc(0, 0, 15, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.scale(scaleX, 1);
-
-    // Outer coin rim
-    const grad = ctx.createLinearGradient(-10, -10, 10, 10);
-    grad.addColorStop(0, '#fef08a');
-    grad.addColorStop(0.4, '#fbbf24');
-    grad.addColorStop(1, '#d97706');
-
-    ctx.fillStyle = grad;
-    ctx.strokeStyle = this.borderColor;
-    ctx.lineWidth = 1.5;
-
-    ctx.beginPath();
-    ctx.arc(0, 0, 9.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // Inner rim line
-    ctx.beginPath();
-    ctx.arc(0, 0, 6.8, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(217, 119, 6, 0.65)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Inner emblem / star
-    if (scaleX > 0.4) {
-      ctx.fillStyle = facingFront ? '#ffffff' : '#fef08a';
-      ctx.beginPath();
-      const rOuter = 3.6;
-      const rInner = 1.6;
-      for (let i = 0; i < 8; i++) {
-        const r = i % 2 === 0 ? rOuter : rInner;
-        const angle = (i * Math.PI) / 4;
-        const sx = Math.cos(angle) * r;
-        const sy = Math.sin(angle) * r;
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  drawGem(ctx) {
-    // Pulsing floating scale
-    const pulse = 1 + Math.sin(this.animTimer * 4 + this.spinOffset) * 0.08;
-    ctx.scale(pulse, pulse);
-
-    // Glowing Aura
-    ctx.fillStyle = this.glowColor;
-    ctx.beginPath();
-    ctx.arc(0, 0, 19, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Gem Diamond / Hex Geometry
-    const w = 11.5;
-    const h = 13.5;
-    const topW = 6.5;
-    const topH = 4.5;
-
-    // Linear gradient for gem body
-    const grad = ctx.createLinearGradient(-w, -h, w, h);
-    grad.addColorStop(0, '#f5d0fe');
-    grad.addColorStop(0.35, '#c084fc');
-    grad.addColorStop(1, '#7e22ce');
-
-    ctx.fillStyle = grad;
-    ctx.strokeStyle = '#fae8ff';
-    ctx.lineWidth = 1.3;
-
-    // Faceted gem outer contour
-    ctx.beginPath();
-    ctx.moveTo(-topW, -h + topH); // top left
-    ctx.lineTo(topW, -h + topH);   // top right
-    ctx.lineTo(w, 0);             // mid right
-    ctx.lineTo(0, h);             // bottom tip
-    ctx.lineTo(-w, 0);            // mid left
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Inner facet lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.lineWidth = 1;
-
-    // Top table facet
-    ctx.beginPath();
-    ctx.moveTo(-topW, -h + topH);
-    ctx.lineTo(0, -h + topH + 2.5);
-    ctx.lineTo(topW, -h + topH);
-    ctx.stroke();
-
-    // Center to bottom tip and side facets
-    ctx.beginPath();
-    ctx.moveTo(-w, 0);
-    ctx.lineTo(0, -h + topH + 2.5);
-    ctx.lineTo(w, 0);
-    ctx.moveTo(0, -h + topH + 2.5);
-    ctx.lineTo(0, h);
-    ctx.stroke();
-
-    // Twinkle shine highlight
-    const glintAlpha = 0.5 + Math.sin(this.animTimer * 5) * 0.5;
-    ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha.toFixed(2)})`;
-    ctx.beginPath();
-    ctx.arc(-topW * 0.4, -h + topH + 1.2, 2.0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// =============================================================================
-// 6. PLAYER
+// 4. PLAYER
 // =============================================================================
 class Player {
   constructor(x, y) {
@@ -1073,7 +750,7 @@ class Player {
 }
 
 // =============================================================================
-// 7. CAMERA SYSTEM
+// 5. CAMERA SYSTEM
 // =============================================================================
 class Camera {
   constructor(viewportWidth, viewportHeight) {
@@ -1689,11 +1366,9 @@ class Game {
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.statsDisplay = document.getElementById('statsDisplay');
-    this.scoreDisplay = document.getElementById('scoreDisplay');
 
     this.input = new InputManager();
     this.particleSystem = new ParticleSystem();
-    this.floatingTexts = new FloatingTextSystem();
     this.world = new World();
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
@@ -1857,9 +1532,6 @@ class Game {
     // Draw Particles
     this.particleSystem.draw(ctx);
 
-    // Draw Floating Score Popups
-    this.floatingTexts.draw(ctx);
-
     // Draw Player
     this.player.draw(ctx);
 
@@ -1968,15 +1640,6 @@ class Game {
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
-
-    // Collectibles Hitboxes
-    for (const c of this.world.collectibles) {
-      if (!c.collected) {
-        ctx.strokeStyle = c.type === 'gem' ? '#e879f9' : '#eab308';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(c.x, c.currentY, c.width, c.height);
-      }
-    }
 
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
