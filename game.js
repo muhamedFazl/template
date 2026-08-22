@@ -290,6 +290,43 @@ class ParticleSystem {
     });
   }
 
+  emitConfetti(x, y, count = 48) {
+    const colors = ['#38bdf8', '#4ade80', '#fbbf24', '#f43f5e', '#a855f7', '#facc15', '#f8fafc'];
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI * 0.85 + Math.random() * (Math.PI * 0.7);
+      const speed = 120 + Math.random() * 320;
+      const lifetime = 0.8 + Math.random() * 1.2;
+      const size = 3 + Math.random() * 4;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 50,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size,
+        initialSize: size,
+        color,
+        lifetime,
+        maxLife: lifetime,
+        gravity: 260,
+      });
+    }
+  }
+
+  emitSparkle(x, y) {
+    this.emit(x, y, 1, {
+      color: Math.random() > 0.5 ? '#fbbf24' : '#38bdf8',
+      sizeMin: 2,
+      sizeMax: 3.5,
+      speedMin: 10,
+      speedMax: 35,
+      lifeMin: 0.3,
+      lifeMax: 0.6,
+      gravity: -20,
+    });
+  }
+
   emitDamage(x, y) {
     // Red damage burst + warning sparks
     this.emit(x, y, 16, {
@@ -2468,6 +2505,144 @@ class World {
 }
 
 // =============================================================================
+// 6.5 GOAL ZONE / FINISH LINE
+// =============================================================================
+class GoalZone {
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.animTimer = 0;
+  }
+
+  get centerX() {
+    return this.x + this.width / 2;
+  }
+
+  get centerY() {
+    return this.y + this.height / 2;
+  }
+
+  update(dt, particleSystem) {
+    this.animTimer += dt;
+    // Ambient sparkles floating around the finish line
+    if (Math.random() < 0.35) {
+      particleSystem.emitSparkle(
+        this.x + Math.random() * this.width,
+        this.y + Math.random() * this.height
+      );
+    }
+  }
+
+  draw(ctx) {
+    ctx.save();
+
+    const postWidth = 7;
+    const postHeight = this.height;
+    const topY = this.y;
+    const bottomY = this.y + this.height;
+    const leftX = this.x;
+    const rightX = this.x + this.width - postWidth;
+
+    // 1. Radiant Goal Area Light / Field
+    const glowGradient = ctx.createLinearGradient(leftX, topY, leftX, bottomY);
+    glowGradient.addColorStop(0, 'rgba(56, 189, 248, 0.28)');
+    glowGradient.addColorStop(0.6, 'rgba(74, 222, 128, 0.12)');
+    glowGradient.addColorStop(1, 'rgba(56, 189, 248, 0.02)');
+    ctx.fillStyle = glowGradient;
+    ctx.fillRect(leftX, topY, this.width, this.height);
+
+    // 2. Goal Posts (Checkered / striped)
+    const drawPost = (px) => {
+      // Base post shadow / border
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(px - 1, topY - 1, postWidth + 2, postHeight + 2);
+
+      // Striped segments
+      const stripes = 6;
+      const stripeHeight = postHeight / stripes;
+      for (let i = 0; i < stripes; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#f8fafc' : '#ef4444';
+        ctx.fillRect(px, topY + i * stripeHeight, postWidth, stripeHeight);
+      }
+
+      // Golden orb on post top
+      ctx.fillStyle = '#fbbf24';
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(px + postWidth / 2, topY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    };
+
+    drawPost(leftX);
+    drawPost(rightX);
+
+    // 3. Finish Line Banner Arch
+    const bannerHeight = 22;
+    const bannerY = topY + 2;
+
+    // Banner Background Box
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, leftX - 6, bannerY, this.width + 12, bannerHeight, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Checkered accent strips on banner
+    const checkSize = 4;
+    for (let cx = leftX - 4; cx < leftX + this.width + 6; cx += checkSize * 2) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(cx, bannerY + 1, checkSize, 3);
+      ctx.fillRect(cx + checkSize, bannerY + bannerHeight - 4, checkSize, 3);
+    }
+
+    // Banner Text: "★ PEAK ★"
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★ PEAK ★', this.centerX, bannerY + bannerHeight / 2);
+
+    // 4. Floating / Bobbing Golden Trophy above the banner
+    const bob = Math.sin(this.animTimer * 4) * 3;
+    const trophyY = topY - 14 + bob;
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🏆', this.centerX, trophyY);
+
+    // 5. Floor Checkered finish strip on platform
+    const stripHeight = 4;
+    const cols = Math.floor(this.width / 8);
+    for (let c = 0; c < cols; c++) {
+      ctx.fillStyle = c % 2 === 0 ? '#ffffff' : '#0f172a';
+      ctx.fillRect(leftX + c * 8, bottomY - stripHeight, 8, stripHeight);
+    }
+
+    ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+}
+
+// =============================================================================
 // 9. GAME ENGINE & LOOP
 // =============================================================================
 class Game {
@@ -2478,9 +2653,18 @@ class Game {
     this.heartsContainer = document.getElementById('heartsContainer');
     this.healthBarFill = document.getElementById('healthBarFill');
 
+    // Speedrun HUD & Victory DOM elements
+    this.timerDisplay = document.getElementById('timerDisplay');
+    this.bestTimeDisplay = document.getElementById('bestTimeDisplay');
+    this.victoryOverlay = document.getElementById('victoryOverlay');
+    this.victoryTime = document.getElementById('victoryTime');
+    this.victoryBest = document.getElementById('victoryBest');
+    this.recordAlert = document.getElementById('recordAlert');
+
     this.input = new InputManager();
     this.particleSystem = new ParticleSystem();
     this.world = new World();
+    this.goalZone = new GoalZone(1270, 80 - 64, 80, 64);
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
@@ -2512,6 +2696,13 @@ class Game {
     this.debugMode = false;
     this.lastRenderedHp = -1;
 
+    // Speedrun Stopwatch state
+    this.runTime = 0;
+    this.timerState = 'READY'; // 'READY' | 'RUNNING' | 'FINISHED'
+    this.bestTime = this.loadBestTime();
+
+    this.updateHUD();
+
     this.lastTime = performance.now();
     this.fps = 60;
     this.fpsTimer = 0;
@@ -2522,6 +2713,95 @@ class Game {
 
     // Start Game Loop
     requestAnimationFrame((time) => this.loop(time));
+  }
+
+  loadBestTime() {
+    try {
+      const saved = localStorage.getItem('speedrun_best_time');
+      if (saved !== null && !isNaN(parseFloat(saved))) {
+        return parseFloat(saved);
+      }
+    } catch (e) {
+      console.warn('localStorage not available:', e);
+    }
+    return null;
+  }
+
+  saveBestTime(time) {
+    try {
+      localStorage.setItem('speedrun_best_time', time.toString());
+    } catch (e) {
+      console.warn('Could not save to localStorage:', e);
+    }
+  }
+
+  formatTime(seconds) {
+    if (seconds === null || seconds === undefined) return '--:--.--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 100);
+    const mm = String(mins).padStart(2, '0');
+    const ss = String(secs).padStart(2, '0');
+    const cc = String(ms).padStart(2, '0');
+    return `${mm}:${ss}.${cc}`;
+  }
+
+  updateHUD() {
+    if (this.timerDisplay) {
+      this.timerDisplay.textContent = this.formatTime(this.runTime);
+    }
+    if (this.bestTimeDisplay) {
+      this.bestTimeDisplay.textContent = this.bestTime !== null 
+        ? `🏆 PB: ${this.formatTime(this.bestTime)}` 
+        : `🏆 PB: --:--.--`;
+    }
+  }
+
+  completeRun() {
+    if (this.timerState === 'FINISHED') return;
+    this.timerState = 'FINISHED';
+
+    const currentRun = this.runTime;
+    let isNewRecord = false;
+
+    if (this.bestTime === null || currentRun < this.bestTime) {
+      this.bestTime = currentRun;
+      this.saveBestTime(this.bestTime);
+      isNewRecord = true;
+    }
+
+    // Confetti celebration
+    this.particleSystem.emitConfetti(this.goalZone.centerX, this.goalZone.centerY, 60);
+    this.particleSystem.emitConfetti(this.player.centerX, this.player.centerY, 40);
+
+    // Update HUD and Victory UI
+    this.updateHUD();
+
+    if (this.victoryTime) {
+      this.victoryTime.textContent = this.formatTime(currentRun);
+    }
+    if (this.victoryBest) {
+      this.victoryBest.textContent = this.formatTime(this.bestTime);
+    }
+    if (this.recordAlert) {
+      if (isNewRecord) {
+        this.recordAlert.classList.remove('hidden');
+      } else {
+        this.recordAlert.classList.add('hidden');
+      }
+    }
+    if (this.victoryOverlay) {
+      this.victoryOverlay.classList.remove('hidden');
+    }
+  }
+
+  resetRun() {
+    this.runTime = 0;
+    this.timerState = 'READY';
+    if (this.victoryOverlay) {
+      this.victoryOverlay.classList.add('hidden');
+    }
+    this.updateHUD();
   }
 
   updateHealthUI(force = false) {
@@ -2576,6 +2856,14 @@ class Game {
       const cpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'Base Camp';
       this.statsDisplay.textContent = `FPS: ${this.fps} | Respawns: ${this.respawnCount} | Checkpoint: ${cpName}`;
     }
+    if (this.timerDisplay) {
+      this.timerDisplay.textContent = this.formatTime(this.runTime);
+    }
+    if (this.bestTimeDisplay) {
+      this.bestTimeDisplay.textContent = this.bestTime !== null
+        ? `🏆 PB: ${this.formatTime(this.bestTime)}`
+        : '🏆 PB: --:--.--';
+    }
   }
 
   update(dt) {
@@ -2584,11 +2872,36 @@ class Game {
       this.debugMode = !this.debugMode;
     }
 
-    // Manual Respawn trigger
+    // Manual Respawn / Run Reset trigger
     if (this.input.restartJustPressed) {
       this.triggerRespawn();
     }
 
+<<<<<<< HEAD
+    // Timer start trigger on player movement
+    if (this.timerState === 'READY') {
+      if (
+        this.input.left ||
+        this.input.right ||
+        this.input.jump ||
+        Math.abs(this.player.vx) > 5 ||
+        Math.abs(this.player.vy) > 5
+      ) {
+        this.timerState = 'RUNNING';
+      }
+    }
+
+    // Live timer ticking
+    if (this.timerState === 'RUNNING') {
+      this.runTime += dt;
+      if (this.timerDisplay) {
+        this.timerDisplay.textContent = this.formatTime(this.runTime);
+      }
+
+      // Check finish line collision
+      if (this.checkGoalCollision(this.player, this.goalZone)) {
+        this.completeRun();
+=======
     // Update World (Platforms + Checkpoints)
     this.world.update(dt, this.player, this.particleSystem, this.input, (activatedCheckpoint) => {
       this.currentCheckpoint = activatedCheckpoint;
@@ -2602,6 +2915,7 @@ class Game {
       this.checkpointBanner.timer -= dt;
       if (this.checkpointBanner.timer <= 0) {
         this.checkpointBanner.active = false;
+>>>>>>> origin/master
       }
     }
 
@@ -2633,7 +2947,8 @@ class Game {
       this.triggerRespawn();
     }
 
-    // Update Camera & Particles
+    // Update Goal Zone & Camera & Particles
+    this.goalZone.update(dt, this.particleSystem);
     this.camera.update(dt, this.player);
     this.particleSystem.update(dt);
 
@@ -2641,12 +2956,26 @@ class Game {
     this.input.resetFrame();
   }
 
+  checkGoalCollision(player, goal) {
+    return (
+      player.x < goal.x + goal.width &&
+      player.x + player.width > goal.x &&
+      player.y < goal.y + goal.height &&
+      player.y + player.height > goal.y
+    );
+  }
+
   triggerRespawn() {
     this.respawnCount++;
+<<<<<<< HEAD
+    this.resetRun();
+    this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
+=======
     const spawnPos = this.currentSpawnPoint || CONFIG.world.spawnPoint;
     this.player.respawn(spawnPos, this.particleSystem);
     this.updateHUD();
     this.updateHealthUI(true);
+>>>>>>> origin/master
   }
 
   render() {
@@ -2673,6 +3002,9 @@ class Game {
 
     // Draw Platforms, Tracks & Checkpoints
     this.world.draw(ctx, this.player);
+
+    // Draw Goal Zone / Finish Line on Peak
+    this.goalZone.draw(ctx);
 
     // Draw Particles
     this.particleSystem.draw(ctx);
@@ -2856,6 +3188,13 @@ class Game {
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
 
+<<<<<<< HEAD
+    // Goal Zone Hitbox
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(this.goalZone.x, this.goalZone.y, this.goalZone.width, this.goalZone.height);
+
+=======
     // Hazard Hitboxes
     for (const hazard of this.world.hazards) {
       const hb = hazard.getHitbox();
@@ -2882,6 +3221,7 @@ class Game {
     ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+>>>>>>> origin/master
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
     ctx.beginPath();
@@ -2914,6 +3254,12 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+<<<<<<< HEAD
+    ctx.fillRect(16, 60, 240, 150);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(16, 60, 240, 150);
+=======
     ctx.fillRect(16, 60, 320, 200);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
@@ -2922,12 +3268,21 @@ class Game {
     const activeCpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'None';
     const platType = this.player.standingPlatform ? this.player.standingPlatform.type : 'None';
     const platState = this.player.standingPlatform ? this.player.standingPlatform.state : '-';
+>>>>>>> origin/master
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 11px monospace';
     ctx.fillText(`DEBUG MODE (F3)`, 26, 80);
 
     ctx.fillStyle = '#f8fafc';
+<<<<<<< HEAD
+    ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 98);
+    ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 116);
+    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 134);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 152);
+    ctx.fillText(`Timer: ${this.timerState} (${this.runTime.toFixed(2)}s)`, 26, 170);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 188);
+=======
     ctx.font = '11px monospace';
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 116);
@@ -2938,6 +3293,7 @@ class Game {
     ctx.fillText(`Wall: ${this.player.isTouchingWall} (dir: ${this.player.wallDir}) | Slide: ${this.player.isWallSliding}`, 26, 196);
     ctx.fillText(`Checkpoint: ${activeCpName} | Hazards: ${this.world.hazards.length}`, 26, 212);
     ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 228);
+>>>>>>> origin/master
     ctx.restore();
   }
 
