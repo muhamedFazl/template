@@ -2,13 +2,8 @@
  * 2D Platformer Game Template
  * Pure Vanilla JavaScript & HTML5 Canvas - Zero Build Steps
  * 
- * Features:
- * - Responsive physics with coyote time, jump buffering & variable jump height
- * - Oscillating moving platforms (horizontal & vertical with smooth sine easing)
- * - Crumbling platforms (shake on step, break away, and respawn)
- * - Hybrid moving & crumbling platforms (oscillate along tracks, fall when stepped on)
- * - Particle system with landing dust, crumble debris & respawn sparkles
- * - Parallax starry sky & procedural character squash/stretch animation
+ * Simply open index.html in any browser to play.
+ * Edit this file and refresh the browser (F5) to see changes immediately.
  */
 
 // =============================================================================
@@ -45,33 +40,9 @@ const CONFIG = {
     skyTop: '#0b0f19',
     skyBottom: '#1a2333',
     grid: 'rgba(255, 255, 255, 0.03)',
-
-    // Static Platforms
     platformTop: '#4ade80',
     platformBody: '#1e293b',
     platformBorder: '#334155',
-
-    // Moving Platforms
-    platformMovingTop: '#38bdf8',
-    platformMovingBody: '#0f2744',
-    platformMovingBorder: '#0284c7',
-    platformTrack: 'rgba(56, 189, 248, 0.22)',
-    platformTrackDot: 'rgba(56, 189, 248, 0.65)',
-
-    // Crumbling Platforms
-    platformCrumbleTop: '#fb923c',
-    platformCrumbleBody: '#3b1c10',
-    platformCrumbleBorder: '#ea580c',
-    platformCrumbleCrack: '#fed7aa',
-
-    // Moving & Crumbling (Hybrid) Platforms
-    platformHybridTop: '#e879f9',
-    platformHybridBody: '#3b0764',
-    platformHybridBorder: '#c026d3',
-    platformHybridTrack: 'rgba(232, 121, 249, 0.22)',
-    platformHybridTrackDot: 'rgba(232, 121, 249, 0.65)',
-
-    // Player & Particles
     playerBody: '#38bdf8',
     playerGlow: 'rgba(56, 189, 248, 0.35)',
     playerEye: '#0f172a',
@@ -220,62 +191,6 @@ class ParticleSystem {
     });
   }
 
-  emitCrumbleDust(centerX, topY, width) {
-    for (let i = 0; i < 8; i++) {
-      const px = centerX - width / 2 + Math.random() * width;
-      this.emit(px, topY, 1, {
-        color: Math.random() < 0.5 ? '#ea580c' : '#fed7aa',
-        sizeMin: 2,
-        sizeMax: 4.5,
-        speedMin: 20,
-        speedMax: 70,
-        angleMin: -Math.PI * 0.9,
-        angleMax: -Math.PI * 0.1,
-        lifeMin: 0.3,
-        lifeMax: 0.6,
-        gravity: 400,
-      });
-    }
-  }
-
-  emitBreak(centerX, centerY, width) {
-    // Burst of debris when crumbling platform falls
-    for (let i = 0; i < 16; i++) {
-      const px = centerX - width / 2 + Math.random() * width;
-      this.emit(px, centerY, 1, {
-        color: ['#fb923c', '#ea580c', '#c2410c', '#fdba74'][Math.floor(Math.random() * 4)],
-        sizeMin: 3,
-        sizeMax: 7,
-        speedMin: 40,
-        speedMax: 180,
-        angleMin: 0,
-        angleMax: Math.PI * 2,
-        lifeMin: 0.4,
-        lifeMax: 0.8,
-        gravity: 600,
-      });
-    }
-  }
-
-  emitRespawnGlow(centerX, centerY, width) {
-    // Magical sparkle when platform re-materializes
-    for (let i = 0; i < 12; i++) {
-      const px = centerX - width / 2 + Math.random() * width;
-      this.emit(px, centerY + 8, 1, {
-        color: ['#67e8f9', '#a5f3fc', '#e879f9', '#ffffff'][Math.floor(Math.random() * 4)],
-        sizeMin: 2,
-        sizeMax: 5,
-        speedMin: 20,
-        speedMax: 80,
-        angleMin: -Math.PI * 0.8,
-        angleMax: -Math.PI * 0.2,
-        lifeMin: 0.4,
-        lifeMax: 0.9,
-        gravity: -100, // Float upwards
-      });
-    }
-  }
-
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -305,436 +220,7 @@ class ParticleSystem {
 }
 
 // =============================================================================
-// 4. PLATFORM SYSTEM
-// =============================================================================
-class Platform {
-  constructor(config = {}) {
-    // Platform Type: 'static' | 'moving' | 'crumbling' | 'moving_crumbling'
-    this.type = config.type || 'static';
-    this.startX = config.x || 0;
-    this.startY = config.y || 0;
-    this.x = this.startX;
-    this.y = this.startY;
-    this.width = config.width || 120;
-    this.height = config.height || 26;
-    this.label = config.label || '';
-
-    // Motion parameters (for 'moving' and 'moving_crumbling')
-    this.oscX = config.oscX || 0;       // Horizontal oscillation distance (+/- px from startX)
-    this.oscY = config.oscY || 0;       // Vertical oscillation distance (+/- px from startY)
-    this.speedX = config.speedX || 1.2; // Frequency multiplier
-    this.speedY = config.speedY || 1.2;
-    this.phaseX = config.phaseX || 0;
-    this.phaseY = config.phaseY || 0;
-    this.motionTimer = 0;
-
-    // Crumble parameters (for 'crumbling' and 'moving_crumbling')
-    this.crumbleDuration = config.crumbleDuration || 0.75; // Seconds shaking before falling
-    this.respawnDelay = config.respawnDelay || 2.8;        // Seconds after falling before respawn
-    this.fallSpeed = 0;
-    this.fallGravity = config.fallGravity || 1200;
-    this.shakeIntensity = config.shakeIntensity || 3.0;
-
-    // State machine: 'idle' | 'shaking' | 'falling' | 'respawning'
-    this.state = 'idle';
-    this.stateTimer = 0;
-
-    // Frame velocity & displacement (to carry player)
-    this.prevX = this.x;
-    this.prevY = this.y;
-    this.deltaX = 0;
-    this.deltaY = 0;
-    this.shakeOffsetX = 0;
-    this.shakeOffsetY = 0;
-    this.alpha = 1.0;
-    this.isSolid = true;
-
-    // Crack seed for consistent visual fractures
-    this.crackPoints = this.generateCrackPoints();
-  }
-
-  isOscillating() {
-    return this.type === 'moving' || this.type === 'moving_crumbling';
-  }
-
-  isCrumbling() {
-    return this.type === 'crumbling' || this.type === 'moving_crumbling';
-  }
-
-  generateCrackPoints() {
-    const points = [];
-    const count = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < count; i++) {
-      const px = (this.width * (i + 1)) / (count + 1) + (Math.random() * 10 - 5);
-      points.push({
-        x: px,
-        topY: 2,
-        midX: px + (Math.random() * 8 - 4),
-        midY: this.height * 0.55,
-        botX: px + (Math.random() * 12 - 6),
-        botY: this.height - 2,
-      });
-    }
-    return points;
-  }
-
-  onStepped(player, particleSystem) {
-    if (this.isCrumbling() && this.state === 'idle') {
-      this.state = 'shaking';
-      this.stateTimer = 0;
-      if (particleSystem) {
-        particleSystem.emitCrumbleDust(this.x + this.width / 2, this.y, this.width);
-      }
-    }
-  }
-
-  update(dt, particleSystem) {
-    this.prevX = this.x;
-    this.prevY = this.y;
-    this.shakeOffsetX = 0;
-    this.shakeOffsetY = 0;
-
-    // -------------------------------------------------------------------------
-    // 1. Oscillation Motion Update
-    // -------------------------------------------------------------------------
-    if (this.isOscillating() && (this.state === 'idle' || this.state === 'shaking')) {
-      this.motionTimer += dt;
-      let targetX = this.startX;
-      let targetY = this.startY;
-
-      if (this.oscX !== 0) {
-        targetX = this.startX + Math.sin(this.motionTimer * this.speedX + this.phaseX) * this.oscX;
-      }
-      if (this.oscY !== 0) {
-        targetY = this.startY + Math.sin(this.motionTimer * this.speedY + this.phaseY) * this.oscY;
-      }
-
-      this.deltaX = targetX - this.prevX;
-      this.deltaY = targetY - this.prevY;
-      this.x = targetX;
-      this.y = targetY;
-    } else if (this.state !== 'falling') {
-      this.deltaX = 0;
-      this.deltaY = 0;
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. Crumble State Machine
-    // -------------------------------------------------------------------------
-    if (this.isCrumbling()) {
-      switch (this.state) {
-        case 'shaking':
-          this.stateTimer += dt;
-          // Progressively increase shake intensity as collapse nears
-          const progress = Math.min(1.0, this.stateTimer / this.crumbleDuration);
-          const currentShake = this.shakeIntensity * (0.6 + progress * 0.9);
-          this.shakeOffsetX = (Math.random() * 2 - 1) * currentShake;
-          this.shakeOffsetY = (Math.random() * 2 - 1) * currentShake * 0.6;
-
-          // Emit small crumble debris puffs periodically while shaking
-          if (particleSystem && Math.random() < 0.3) {
-            const rx = this.x + Math.random() * this.width;
-            particleSystem.emit(rx, this.y + this.height, 1, {
-              color: '#ea580c',
-              sizeMin: 1.5,
-              sizeMax: 3.5,
-              speedMin: 15,
-              speedMax: 45,
-              angleMin: Math.PI * 0.3,
-              angleMax: Math.PI * 0.7,
-              lifeMin: 0.25,
-              lifeMax: 0.5,
-              gravity: 400,
-            });
-          }
-
-          if (this.stateTimer >= this.crumbleDuration) {
-            // Detach and fall!
-            this.state = 'falling';
-            this.stateTimer = 0;
-            this.fallSpeed = 50;
-            this.isSolid = false;
-            this.deltaX = 0;
-            this.deltaY = 0;
-            if (particleSystem) {
-              particleSystem.emitBreak(this.x + this.width / 2, this.y + this.height / 2, this.width);
-            }
-          }
-          break;
-
-        case 'falling':
-          this.stateTimer += dt;
-          this.fallSpeed += this.fallGravity * dt;
-          const fallDelta = this.fallSpeed * dt;
-          this.y += fallDelta;
-          this.deltaY = fallDelta;
-          this.deltaX = 0;
-          this.alpha = Math.max(0, 1 - (this.stateTimer / 0.75));
-
-          // Once fallen off screen or fully faded, switch to respawning
-          if (this.alpha <= 0 || this.y > CONFIG.world.deathY + 100) {
-            this.state = 'respawning';
-            this.stateTimer = 0;
-            this.alpha = 0;
-            this.fallSpeed = 0;
-            this.isSolid = false;
-          }
-          break;
-
-        case 'respawning':
-          this.stateTimer += dt;
-          if (this.stateTimer >= this.respawnDelay) {
-            // Re-materialize at starting track coordinates
-            this.state = 'idle';
-            this.stateTimer = 0;
-            this.alpha = 1.0;
-            this.isSolid = true;
-            this.fallSpeed = 0;
-
-            if (this.isOscillating()) {
-              if (this.oscX !== 0) {
-                this.x = this.startX + Math.sin(this.motionTimer * this.speedX + this.phaseX) * this.oscX;
-              } else {
-                this.x = this.startX;
-              }
-              if (this.oscY !== 0) {
-                this.y = this.startY + Math.sin(this.motionTimer * this.speedY + this.phaseY) * this.oscY;
-              } else {
-                this.y = this.startY;
-              }
-            } else {
-              this.x = this.startX;
-              this.y = this.startY;
-            }
-
-            this.prevX = this.x;
-            this.prevY = this.y;
-            this.deltaX = 0;
-            this.deltaY = 0;
-
-            if (particleSystem) {
-              particleSystem.emitRespawnGlow(this.x + this.width / 2, this.y + this.height / 2, this.width);
-            }
-          }
-          break;
-
-        case 'idle':
-        default:
-          this.isSolid = true;
-          this.alpha = 1.0;
-          break;
-      }
-    }
-  }
-
-  drawTrack(ctx) {
-    if (!this.isOscillating()) return;
-
-    ctx.save();
-    const isHybrid = this.type === 'moving_crumbling';
-    ctx.strokeStyle = isHybrid ? CONFIG.colors.platformHybridTrack : CONFIG.colors.platformTrack;
-    ctx.fillStyle = isHybrid ? CONFIG.colors.platformHybridTrackDot : CONFIG.colors.platformTrackDot;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 6]);
-
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
-
-    // Horizontal track guide
-    if (this.oscX !== 0) {
-      const leftX = this.startX - this.oscX + halfW;
-      const rightX = this.startX + this.oscX + halfW;
-      const trackY = this.startY + halfH;
-
-      ctx.beginPath();
-      ctx.moveTo(leftX, trackY);
-      ctx.lineTo(rightX, trackY);
-      ctx.stroke();
-
-      // Track endpoint stops
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(leftX, trackY, 4, 0, Math.PI * 2);
-      ctx.arc(rightX, trackY, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Vertical track guide
-    if (this.oscY !== 0) {
-      const trackX = this.startX + halfW;
-      const topY = this.startY - this.oscY + halfH;
-      const botY = this.startY + this.oscY + halfH;
-
-      ctx.setLineDash([4, 6]);
-      ctx.beginPath();
-      ctx.moveTo(trackX, topY);
-      ctx.lineTo(trackX, botY);
-      ctx.stroke();
-
-      // Track endpoint stops
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(trackX, topY, 4, 0, Math.PI * 2);
-      ctx.arc(trackX, botY, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
-
-  draw(ctx) {
-    if (this.state === 'respawning') return;
-
-    ctx.save();
-    ctx.globalAlpha = this.alpha;
-
-    const drawX = this.x + this.shakeOffsetX;
-    const drawY = this.y + this.shakeOffsetY;
-
-    // Color palette selection
-    let bodyColor = CONFIG.colors.platformBody;
-    let borderColor = CONFIG.colors.platformBorder;
-    let topColor = CONFIG.colors.platformTop;
-
-    if (this.type === 'moving') {
-      bodyColor = CONFIG.colors.platformMovingBody;
-      borderColor = CONFIG.colors.platformMovingBorder;
-      topColor = CONFIG.colors.platformMovingTop;
-    } else if (this.type === 'crumbling') {
-      bodyColor = CONFIG.colors.platformCrumbleBody;
-      borderColor = CONFIG.colors.platformCrumbleBorder;
-      topColor = CONFIG.colors.platformCrumbleTop;
-    } else if (this.type === 'moving_crumbling') {
-      bodyColor = CONFIG.colors.platformHybridBody;
-      borderColor = CONFIG.colors.platformHybridBorder;
-      topColor = CONFIG.colors.platformHybridTop;
-    }
-
-    // 1. Main Platform Body
-    ctx.fillStyle = bodyColor;
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-    this.drawRoundedRect(ctx, drawX, drawY, this.width, this.height, 6);
-    ctx.fill();
-    ctx.stroke();
-
-    // 2. Moving Platform Visual Accents (Chevrons / Core lights)
-    if (this.isOscillating()) {
-      this.drawMovingAccents(ctx, drawX, drawY, topColor);
-    }
-
-    // 3. Crumble Visual Accents (Fractures & Danger Warnings)
-    if (this.isCrumbling()) {
-      this.drawCrumbleAccents(ctx, drawX, drawY);
-    }
-
-    // 4. Bright Top Highlight Lip
-    ctx.fillStyle = topColor;
-    ctx.beginPath();
-    this.drawRoundedRect(ctx, drawX + 2, drawY + 1, this.width - 4, 6, 3);
-    ctx.fill();
-
-    // 5. Label
-    if (this.label) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(this.label, drawX + this.width / 2, drawY + this.height - 8);
-    }
-
-    ctx.restore();
-  }
-
-  drawMovingAccents(ctx, drawX, drawY, color) {
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.5;
-
-    const centerY = drawY + this.height / 2 + 1;
-    const centerX = drawX + this.width / 2;
-
-    if (this.oscX !== 0) {
-      // Horizontal arrows / chevrons
-      const arrowSize = 4;
-      ctx.beginPath();
-      // Left chevron
-      ctx.moveTo(centerX - 16, centerY - arrowSize);
-      ctx.lineTo(centerX - 20, centerY);
-      ctx.lineTo(centerX - 16, centerY + arrowSize);
-      // Right chevron
-      ctx.moveTo(centerX + 16, centerY - arrowSize);
-      ctx.lineTo(centerX + 20, centerY);
-      ctx.lineTo(centerX + 16, centerY + arrowSize);
-      ctx.stroke();
-    }
-
-    if (this.oscY !== 0) {
-      // Vertical chevrons
-      const arrowSize = 4;
-      ctx.beginPath();
-      // Up chevron
-      ctx.moveTo(centerX - arrowSize, centerY - 6);
-      ctx.lineTo(centerX, centerY - 10);
-      ctx.lineTo(centerX + arrowSize, centerY - 6);
-      // Down chevron
-      ctx.moveTo(centerX - arrowSize, centerY + 6);
-      ctx.lineTo(centerX, centerY + 10);
-      ctx.lineTo(centerX + arrowSize, centerY + 6);
-      ctx.stroke();
-    }
-
-    // Center Energy Core Pip
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  drawCrumbleAccents(ctx, drawX, drawY) {
-    ctx.save();
-    const isShaking = this.state === 'shaking';
-    ctx.strokeStyle = isShaking ? '#fed7aa' : 'rgba(254, 215, 170, 0.4)';
-    ctx.lineWidth = isShaking ? 2 : 1;
-
-    // Draw jagged fracture lines
-    for (const crack of this.crackPoints) {
-      ctx.beginPath();
-      ctx.moveTo(drawX + crack.x, drawY + crack.topY);
-      ctx.lineTo(drawX + crack.midX, drawY + crack.midY);
-      ctx.lineTo(drawX + crack.botX, drawY + crack.botY);
-      ctx.stroke();
-    }
-
-    // Danger pulse overlay when shaking
-    if (isShaking) {
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
-      this.drawRoundedRect(ctx, drawX, drawY, this.width, this.height, 6);
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
-
-  drawRoundedRect(ctx, x, y, width, height, radius) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-  }
-}
-
-// =============================================================================
-// 5. PLAYER
+// 4. PLAYER
 // =============================================================================
 class Player {
   constructor(x, y) {
@@ -746,7 +232,6 @@ class Player {
     this.vy = 0;
     this.isGrounded = false;
     this.wasGrounded = false;
-    this.standingPlatform = null; // Reference to currently ridden platform
     this.facing = 1; // 1 = right, -1 = left
 
     // Timers for game feel
@@ -766,8 +251,6 @@ class Player {
     this.y = spawnPoint.y;
     this.vx = 0;
     this.vy = 0;
-    this.standingPlatform = null;
-    this.isGrounded = false;
     this.scaleX = 1.4;
     this.scaleY = 0.6;
     if (particleSystem) {
@@ -785,22 +268,7 @@ class Player {
 
   update(dt, input, platforms, particleSystem) {
     // -------------------------------------------------------------------------
-    // 1. Moving Platform Synchronization (Carry Player with Motion)
-    // -------------------------------------------------------------------------
-    if (this.standingPlatform) {
-      if (!this.standingPlatform.isSolid) {
-        // Platform beneath started falling/crumbling away
-        this.standingPlatform = null;
-        this.isGrounded = false;
-      } else {
-        // Carry player with moving platform displacement
-        this.x += this.standingPlatform.deltaX;
-        this.y += this.standingPlatform.deltaY;
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. Timers & Input Buffering
+    // 1. Timers & Input Buffering
     // -------------------------------------------------------------------------
     if (this.isGrounded) {
       this.coyoteTimer = CONFIG.physics.coyoteTime;
@@ -815,7 +283,7 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 3. Horizontal Movement
+    // 2. Horizontal Movement
     // -------------------------------------------------------------------------
     let moveDir = 0;
     if (input.left) moveDir -= 1;
@@ -847,7 +315,7 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 4. Jump Handling (Variable Jump Height + Coyote + Buffer)
+    // 3. Jump Handling (Variable Jump Height + Coyote + Buffer)
     // -------------------------------------------------------------------------
     if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
       // Execute Jump
@@ -855,7 +323,6 @@ class Player {
       this.jumpBufferTimer = 0;
       this.coyoteTimer = 0;
       this.isGrounded = false;
-      this.standingPlatform = null;
 
       // Visual juice: stretch vertically on jump
       this.scaleX = 0.75;
@@ -870,7 +337,7 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 5. Gravity & Vertical Movement
+    // 4. Gravity & Vertical Movement
     // -------------------------------------------------------------------------
     this.vy += CONFIG.physics.gravity * dt;
     if (this.vy > CONFIG.physics.terminalVelocity) {
@@ -878,12 +345,11 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 6. Physics Collision Resolution (AABB)
+    // 5. Physics Collision Resolution (AABB)
     // -------------------------------------------------------------------------
-    // Move X first & check collisions against solid platforms
+    // Move X first & check collisions
     this.x += this.vx * dt;
     for (const plat of platforms) {
-      if (!plat.isSolid) continue;
       if (this.checkCollision(this, plat)) {
         if (this.vx > 0) {
           this.x = plat.x - this.width;
@@ -894,24 +360,18 @@ class Player {
       }
     }
 
-    // Move Y next & check collisions against solid platforms
+    // Move Y next & check collisions
     this.wasGrounded = this.isGrounded;
     this.isGrounded = false;
-    this.standingPlatform = null;
     this.y += this.vy * dt;
 
     for (const plat of platforms) {
-      if (!plat.isSolid) continue;
       if (this.checkCollision(this, plat)) {
-        // Check landing from above (falling or resting on platform)
-        if (this.vy >= 0 && (this.y + this.height - this.vy * dt) <= plat.y + 14) {
+        if (this.vy > 0) {
+          // Landed on platform top
           this.y = plat.y - this.height;
           this.vy = 0;
           this.isGrounded = true;
-          this.standingPlatform = plat;
-
-          // Trigger crumble / interaction
-          plat.onStepped(this, particleSystem);
 
           // Landing visual juice (squash on impact)
           if (!this.wasGrounded) {
@@ -928,7 +388,7 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 7. Procedural Animation & Squash/Stretch Recovery
+    // 6. Procedural Animation & Squash/Stretch Recovery
     // -------------------------------------------------------------------------
     this.scaleX += (1 - this.scaleX) * 12 * dt;
     this.scaleY += (1 - this.scaleY) * 12 * dt;
@@ -1108,7 +568,7 @@ class Player {
 }
 
 // =============================================================================
-// 6. CAMERA SYSTEM
+// 5. CAMERA SYSTEM
 // =============================================================================
 class Camera {
   constructor(viewportWidth, viewportHeight) {
@@ -1152,83 +612,82 @@ class Camera {
 }
 
 // =============================================================================
-// 7. WORLD & SCENE PLATFORMS
+// 6. WORLD & SCENE PLATFORMS
 // =============================================================================
 class World {
   constructor() {
     this.platforms = [
-      // -----------------------------------------------------------------------
-      // Zone 1: Spawn & Introduction to Moving Platforms
-      // -----------------------------------------------------------------------
-      new Platform({ x: 40, y: 340, width: 340, height: 40, label: 'Spawn Ground' }),
-      new Platform({ x: 490, y: 320, width: 130, height: 26, type: 'moving', oscX: 95, speedX: 1.6, label: 'Moving ↔' }),
-      new Platform({ x: 710, y: 300, width: 150, height: 28, label: 'Mid Island' }),
+      // 1. Spawn / Main Ground Platform
+      { x: 40, y: 340, width: 380, height: 40, label: 'Start Ground' },
 
-      // -----------------------------------------------------------------------
-      // Zone 2: Crumbling Stepping Stones Across Pit
-      // -----------------------------------------------------------------------
-      new Platform({ x: 920, y: 280, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1070, y: 250, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1220, y: 220, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1370, y: 200, width: 160, height: 30, label: 'Checkpoint' }),
+      // 2. Stepping stones leading up
+      { x: 480, y: 280, width: 140, height: 26 },
+      { x: 680, y: 220, width: 160, height: 26 },
+      { x: 900, y: 150, width: 180, height: 26 },
 
-      // -----------------------------------------------------------------------
-      // Zone 3: Vertical Elevator & Sky Summit
-      // -----------------------------------------------------------------------
-      new Platform({ x: 1600, y: 140, width: 120, height: 24, type: 'moving', oscY: 130, speedY: 1.4, label: 'Elevator ↕' }),
-      new Platform({ x: 1790, y: -20, width: 240, height: 34, label: 'Sky Summit' }),
+      // 3. High vantage platform
+      { x: 1140, y: 80, width: 260, height: 32, label: 'Peak' },
 
-      // -----------------------------------------------------------------------
-      // Zone 4: The Gauntlet: Oscillating & Crumbling (Hybrid) Platforms!
-      // -----------------------------------------------------------------------
-      new Platform({ x: 1540, y: -40, width: 110, height: 22, type: 'moving_crumbling', oscX: 75, speedX: 2.0, label: 'Osc & Fall ⚡' }),
-      new Platform({ x: 1290, y: -60, width: 105, height: 22, type: 'moving_crumbling', oscY: 60, speedY: 1.8, label: 'Osc & Fall ⚡' }),
-      new Platform({ x: 1040, y: -80, width: 110, height: 22, type: 'moving_crumbling', oscX: 80, speedX: 2.2, label: 'Osc & Fall ⚡' }),
+      // 4. Lower gap challenge
+      { x: 1160, y: 320, width: 180, height: 30 },
+      { x: 1420, y: 380, width: 220, height: 36 },
+      { x: 1720, y: 300, width: 160, height: 26 },
 
-      // -----------------------------------------------------------------------
-      // Zone 5: Grand Peak / Trophy Vantage
-      // -----------------------------------------------------------------------
-      new Platform({ x: 670, y: -100, width: 250, height: 34, label: 'Grand Peak 🏆' }),
+      // 5. Long return runway
+      { x: 1940, y: 240, width: 340, height: 40, label: 'Runway' },
 
-      // -----------------------------------------------------------------------
-      // Zone 6: Descending Upper Route Back to Spawn
-      // -----------------------------------------------------------------------
-      new Platform({ x: 470, y: -10, width: 100, height: 24, type: 'crumbling', label: 'Crumble' }),
-      new Platform({ x: 300, y: 70, width: 110, height: 24, type: 'moving', oscX: 55, speedX: 1.5, label: 'Moving ↔' }),
-      new Platform({ x: 140, y: 170, width: 130, height: 26, label: 'High Overlook' }),
-
-      // -----------------------------------------------------------------------
-      // Zone 7: Lower Speed Runway Route
-      // -----------------------------------------------------------------------
-      new Platform({ x: 1430, y: 380, width: 180, height: 34, label: 'Lower Path' }),
-      new Platform({ x: 1690, y: 360, width: 120, height: 24, type: 'moving_crumbling', oscX: 85, speedX: 2.4, label: 'Danger ⚡' }),
-      new Platform({ x: 1960, y: 320, width: 280, height: 38, label: 'Far Runway' }),
+      // 6. Floating upper islands
+      { x: 740, y: 60, width: 120, height: 24 },
+      { x: 500, y: 80, width: 100, height: 24 },
+      { x: 280, y: 140, width: 120, height: 24 },
     ];
   }
 
-  update(dt, particleSystem) {
+  draw(ctx) {
     for (const plat of this.platforms) {
-      plat.update(dt, particleSystem);
+      // Platform Body
+      ctx.fillStyle = CONFIG.colors.platformBody;
+      ctx.strokeStyle = CONFIG.colors.platformBorder;
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, plat.x, plat.y, plat.width, plat.height, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Bright top edge highlight (Grass/Energy surface)
+      ctx.fillStyle = CONFIG.colors.platformTop;
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, plat.x + 2, plat.y + 1, plat.width - 4, 6, 3);
+      ctx.fill();
+
+      // Subtle label on key platforms
+      if (plat.label) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(plat.label, plat.x + plat.width / 2, plat.y + plat.height - 10);
+      }
     }
   }
 
-  draw(ctx) {
-    // 1. Draw track guides first so platforms render on top
-    for (const plat of this.platforms) {
-      if (plat.isOscillating() && plat.state !== 'falling' && plat.state !== 'respawning') {
-        plat.drawTrack(ctx);
-      }
-    }
-
-    // 2. Draw platforms
-    for (const plat of this.platforms) {
-      plat.draw(ctx);
-    }
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
   }
 }
 
 // =============================================================================
-// 8. GAME ENGINE & LOOP
+// 7. GAME ENGINE & LOOP
 // =============================================================================
 class Game {
   constructor() {
@@ -1267,9 +726,6 @@ class Game {
       this.triggerRespawn();
     }
 
-    // Update Platforms (Movement, shaking & crumble lifecycles)
-    this.world.update(dt, this.particleSystem);
-
     // Update Player & Physics
     this.player.update(dt, this.input, this.world.platforms, this.particleSystem);
 
@@ -1305,7 +761,7 @@ class Game {
     ctx.fillStyle = skyGradient;
     ctx.fillRect(0, 0, w, h);
 
-    // Parallax Distant Stars
+    // Parallax Distant Grid / Stars
     this.drawParallaxStars(ctx);
 
     // -------------------------------------------------------------------------
@@ -1313,7 +769,7 @@ class Game {
     // -------------------------------------------------------------------------
     this.camera.apply(ctx);
 
-    // Draw Platforms & Tracks
+    // Draw Platforms
     this.world.draw(ctx);
 
     // Draw Particles
@@ -1368,14 +824,6 @@ class Game {
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
 
-    // Platforms Hitboxes
-    for (const plat of this.world.platforms) {
-      if (!plat.isSolid) continue;
-      ctx.strokeStyle = plat.type === 'moving' ? '#38bdf8' : (plat.type === 'crumbling' ? '#fb923c' : (plat.type === 'moving_crumbling' ? '#e879f9' : '#4ade80'));
-      ctx.lineWidth = 1;
-      ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
-    }
-
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
     ctx.beginPath();
@@ -1396,10 +844,10 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 260, 160);
+    ctx.fillRect(16, 60, 240, 130);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 260, 160);
+    ctx.strokeRect(16, 60, 240, 130);
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '11px monospace';
@@ -1408,12 +856,8 @@ class Game {
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
     ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
-
-    const platType = this.player.standingPlatform ? this.player.standingPlatform.type : 'None';
-    const platState = this.player.standingPlatform ? this.player.standingPlatform.state : '-';
-    ctx.fillText(`Platform: ${platType} [${platState}]`, 26, 160);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 180);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 200);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 160);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 175);
     ctx.restore();
   }
 
@@ -1446,4 +890,3 @@ class Game {
 window.addEventListener('DOMContentLoaded', () => {
   new Game();
 });
-
