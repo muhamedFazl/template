@@ -38,6 +38,7 @@ const CONFIG = {
     jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
     coyoteTime: 0.12,       // Grace period (seconds) to jump after leaving a ledge
     jumpBufferTime: 0.12,   // Window (seconds) to register jump before landing
+    bouncePadForce: 950,    // Power of the bounce/spring launch
     wallSlideSpeed: 110,    // Constant downward slide speed when contacting a wall
     wallJumpForceY: 540,    // Vertical impulse on wall jump
     wallJumpForceX: 210,    // Horizontal impulse away from wall on wall jump
@@ -125,6 +126,13 @@ const CONFIG = {
     checkpointActive: '#10b981',
     checkpointInactive: '#ef4444',
     checkpointGlow: 'rgba(16, 185, 129, 0.4)',
+    springBody: '#f43f5e',
+    springCoil: '#cbd5e1',
+    springCap: '#e11d48',
+    padBody: '#1e293b',
+    padBorder: '#475569',
+    padGlowBlue: '#3b82f6',
+    padGlowPurple: '#a855f7',
   },
   lighting: {
     enabled: true,
@@ -149,6 +157,180 @@ const CONFIG = {
 };
 
 // =============================================================================
+// SOUND EFFECT MANAGER (Procedural Web Audio API)
+// =============================================================================
+class SoundEffectManager {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (this.ctx) return;
+    const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
+    if (AudioContextClass) {
+      try {
+        this.ctx = new AudioContextClass();
+      } catch (e) {
+        console.warn('Web Audio API not supported:', e);
+      }
+    }
+  }
+
+  playBoing() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.04);
+      osc.frequency.exponentialRampToValueAtTime(460, now + 0.16);
+      osc.frequency.exponentialRampToValueAtTime(180, now + 0.32);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.28, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } catch (e) {}
+  }
+
+  playJump() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(360, now + 0.12);
+
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } catch (e) {}
+  }
+
+  playLand() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(90, now);
+      osc.frequency.linearRampToValueAtTime(30, now + 0.08);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch (e) {}
+  }
+
+  playDamage() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } catch (e) {}
+  }
+
+  playCheckpoint() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [330, 440, 550, 660].forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = now + i * 0.06;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.12, start);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + 0.15);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + 0.15);
+      });
+    } catch (e) {}
+  }
+
+  playFanfare() {
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = now + i * 0.1;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.18, start);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + 0.4);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + 0.4);
+      });
+    } catch (e) {}
+  }
+}
+
+const SoundManager = new SoundEffectManager();
+
+// =============================================================================
 // 2. INPUT MANAGER
 // =============================================================================
 class InputManager {
@@ -162,10 +344,15 @@ class InputManager {
         e.preventDefault();
       }
 
+      SoundManager.init();
       if (!this.keys[e.code]) {
         this.justPressed[e.code] = true;
       }
       this.keys[e.code] = true;
+    });
+
+    window.addEventListener('click', () => {
+      SoundManager.init();
     });
 
     window.addEventListener('keyup', (e) => {
@@ -974,7 +1161,7 @@ class Player {
     return 0;
   }
 
-  update(dt, input, platforms, particleSystem) {
+  update(dt, input, platforms, bouncePads, particleSystem) {
     // -------------------------------------------------------------------------
     // 1. Moving Platform Synchronization (Carry Player with Motion)
     // -------------------------------------------------------------------------
@@ -1082,6 +1269,7 @@ class Player {
         this.scaleY = 1.35;
 
         particleSystem.emitDust(this.centerX, this.y + this.height);
+        SoundManager.playJump();
       } else if (this.wallCoyoteTimer > 0) {
         // Wall Jump! Jump up and away from the wall
         const jumpWallDir = this.lastWallDir !== 0 ? this.lastWallDir : this.wallDir;
@@ -1102,6 +1290,7 @@ class Player {
 
           const dustX = jumpWallDir === -1 ? this.x : this.x + this.width;
           particleSystem.emitDust(dustX, this.centerY, -jumpWallDir);
+          SoundManager.playJump();
         }
       }
     }
@@ -1166,6 +1355,48 @@ class Player {
     this.standingPlatform = null;
     this.y += this.vy * dt;
 
+        // Check Bounce Pads collision before resolving standard platform collisions
+    if (bouncePads) {
+      for (const pad of bouncePads) {
+        if (this.checkCollision(this, pad)) {
+          // Bouncy launch! Trigger if falling/stationary, and bottom is above the pad's top zone
+          if (this.vy >= 0 && this.y + this.height - this.vy * dt <= pad.y + 14) {
+            pad.trigger();
+
+            // Apply launch force!
+            this.vy = -pad.bounceForce;
+
+            // Align player bottom with pad top
+            this.y = pad.y - this.height;
+            this.isGrounded = false;
+            this.standingPlatform = null;
+
+            // Apply exaggerated visual stretch & squash
+            this.scaleX = 0.45;
+            this.scaleY = 2.3;
+
+            // Emit dynamic particle burst in an upward cone
+            const particleColor = pad.type === 'spring' ? CONFIG.colors.springBody : CONFIG.colors.padGlowPurple;
+            particleSystem.emit(pad.x + pad.width / 2, pad.y, 16, {
+              color: particleColor,
+              sizeMin: 3,
+              sizeMax: 7,
+              speedMin: 150,
+              speedMax: 320,
+              lifeMin: 0.35,
+              lifeMax: 0.75,
+              angleMin: -Math.PI * 0.75,
+              angleMax: -Math.PI * 0.25,
+              gravity: 150
+            });
+
+            // Play the boing sound effect!
+            SoundManager.playBoing();
+          }
+        }
+      }
+    }
+
     for (const plat of platforms) {
       if (!plat.isSolid) continue;
       if (this.checkCollision(this, plat)) {
@@ -1184,6 +1415,7 @@ class Player {
             this.scaleX = 1.35;
             this.scaleY = 0.7;
             particleSystem.emitDust(this.centerX, this.y + this.height);
+            SoundManager.playLand();
           }
         } else if (this.vy < 0) {
           // Hit head on bottom of platform
@@ -2340,6 +2572,145 @@ class Checkpoint {
 }
 
 // =============================================================================
+// BOUNCE PAD & SPRING SYSTEM
+// =============================================================================
+class BouncePad {
+  constructor(x, y, type = 'spring') {
+    this.x = x;
+    this.y = y;
+    this.width = 40;
+    this.height = 20;
+    this.type = type; // 'spring' | 'pad'
+    this.bounceForce = CONFIG.physics.bouncePadForce || 950;
+    this.compressScale = 1.0;
+    this.animTimer = 0;
+    this.isTriggered = false;
+  }
+
+  get centerX() {
+    return this.x + this.width / 2;
+  }
+
+  get centerY() {
+    return this.y + this.height / 2;
+  }
+
+  update(dt) {
+    if (this.isTriggered) {
+      this.animTimer += dt * 14;
+      // Damped sine wave for spring wobble
+      this.compressScale = 1.0 - Math.sin(this.animTimer * 2) * Math.exp(-this.animTimer * 0.7) * 0.55;
+      if (this.animTimer > 4.5) {
+        this.isTriggered = false;
+        this.compressScale = 1.0;
+      }
+    } else {
+      this.compressScale += (1.0 - this.compressScale) * 8 * dt;
+    }
+  }
+
+  trigger() {
+    this.isTriggered = true;
+    this.animTimer = 0;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    // Pivot at bottom center
+    ctx.translate(this.x + this.width / 2, this.y + this.height);
+    ctx.scale(1 / Math.max(0.2, this.compressScale), this.compressScale); // mass conservation scale
+
+    const w = this.width;
+    const h = this.height;
+
+    if (this.type === 'spring') {
+      // 1. Draw Base plate
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(-w / 2, -4, w, 4, 2);
+      } else {
+        ctx.rect(-w / 2, -4, w, 4);
+      }
+      ctx.fill();
+
+      // 2. Draw Spring coil
+      ctx.strokeStyle = CONFIG.colors.springCoil;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      
+      const coils = 3;
+      const coilHeight = (h - 8) / coils;
+      ctx.moveTo(-w / 4, -4);
+      for (let i = 0; i < coils; i++) {
+        const yOffset = -4 - i * coilHeight;
+        const dir = i % 2 === 0 ? 1 : -1;
+        ctx.lineTo(dir * w / 4, yOffset - coilHeight / 2);
+        ctx.lineTo(-dir * w / 4, yOffset - coilHeight);
+      }
+      ctx.stroke();
+
+      // 3. Draw Top Plate (Cap)
+      ctx.fillStyle = CONFIG.colors.springCap;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(-w / 2 - 2, -h, w + 4, 5, 2);
+      } else {
+        ctx.rect(-w / 2 - 2, -h, w + 4, 5);
+      }
+      ctx.fill();
+
+      // Yellow accent strip on Cap
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(-w / 2 + 2, -h + 1.5, w - 4, 2);
+    } else {
+      // Futuristic neon pad
+      // Base plate
+      ctx.fillStyle = CONFIG.colors.padBody;
+      ctx.strokeStyle = CONFIG.colors.padBorder;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, 0);
+      ctx.lineTo(-w / 2 + 5, -h);
+      ctx.lineTo(w / 2 - 5, -h);
+      ctx.lineTo(w / 2, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Glowing core gradient
+      const glowGrad = ctx.createLinearGradient(0, -h, 0, 0);
+      const glowColor = this.isTriggered ? CONFIG.colors.padGlowPurple : CONFIG.colors.padGlowBlue;
+      glowGrad.addColorStop(0, glowColor);
+      glowGrad.addColorStop(1, 'rgba(30, 41, 59, 0)');
+      
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + 6, -h + 2);
+      ctx.lineTo(w / 2 - 6, -h + 2);
+      ctx.lineTo(w / 2 - 3, -2);
+      ctx.lineTo(-w / 2 + 3, -2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Neon LED line on top
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = this.isTriggered ? 12 : 6;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + 4, -h + 1.5);
+      ctx.lineTo(w / 2 - 4, -h + 1.5);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+// =============================================================================
 // 8. WORLD & SCENE PLATFORMS (MULTI-BLOCK OSCILLATION & CHECKPOINTS)
 // =============================================================================
 class World {
@@ -2419,6 +2790,21 @@ class World {
       new Checkpoint(-420, 20, 'Wall Summit', false),
     ];
 
+        // Springs and Neon Bounce Pads
+    this.bouncePads = [
+      // Launch from Spawn Ground up to the first high floating island
+      new BouncePad(320, 340 - 20, 'spring'),
+
+      // Safety / boost pad floating in the first deep gap
+      new BouncePad(640, 380 - 20, 'pad'),
+
+      // Launch from Lower Gap platform to the high Peak
+      new BouncePad(1510, 380 - 20, 'spring'),
+
+      // Launch pad on the Runway to throw player sky-high
+      new BouncePad(2100, 320 - 20, 'pad'),
+    ];
+
     this.hazards = [
       // Spike hazard on edge of Start Ground (top)
       new SpikeHazard(280, 322, 100, 18, 'up', 'Spike Pit'),
@@ -2441,6 +2827,11 @@ class World {
     // 1. Update platforms
     for (const plat of this.platforms) {
       plat.update(dt, particleSystem);
+    }
+
+    // 1.5 Update Bounce Pads
+    for (const pad of this.bouncePads) {
+      pad.update(dt);
     }
 
     // 2. Update checkpoints
@@ -2476,6 +2867,11 @@ class World {
     // 2. Draw platforms
     for (const plat of this.platforms) {
       plat.draw(ctx);
+    }
+
+    // 2.5 Draw Bounce Pads
+    for (const pad of this.bouncePads) {
+      pad.draw(ctx);
     }
 
     // 3. Draw Checkpoint Flags
@@ -2773,6 +3169,7 @@ class Game {
     // Confetti celebration
     this.particleSystem.emitConfetti(this.goalZone.centerX, this.goalZone.centerY, 60);
     this.particleSystem.emitConfetti(this.player.centerX, this.player.centerY, 40);
+    SoundManager.playFanfare();
 
     // Update HUD and Victory UI
     this.updateHUD();
@@ -2908,6 +3305,7 @@ class Game {
       this.currentCheckpoint = activatedCheckpoint;
       this.currentSpawnPoint = { ...activatedCheckpoint.spawnPoint };
       this.showCheckpointBanner('CHECKPOINT ACTIVATED!', activatedCheckpoint.label);
+      SoundManager.playCheckpoint();
       this.updateHUD();
     });
 
@@ -2920,7 +3318,7 @@ class Game {
     }
 
     // Update Player & Physics
-    this.player.update(dt, this.input, this.world.platforms, this.particleSystem);
+    this.player.update(dt, this.input, this.world.platforms, this.world.bouncePads, this.particleSystem);
 
     // Hazard Collision Detection
     for (const hazard of this.world.hazards) {
@@ -3197,6 +3595,13 @@ class Game {
       ctx.strokeStyle = '#f97316';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(hb.x, hb.y, hb.width, hb.height);
+    }
+
+    // Bounce Pad Hitboxes
+    for (const pad of this.world.bouncePads) {
+      ctx.strokeStyle = pad.type === 'spring' ? '#f43f5e' : '#a855f7';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(pad.x, pad.y, pad.width, pad.height);
     }
 
     // Platform Hitboxes

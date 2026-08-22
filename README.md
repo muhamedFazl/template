@@ -13,7 +13,8 @@ No build tools, npm packages, or bundlers required. Double click `index.html` to
 | **Move Left / Right** | <kbd>A</kbd> / <kbd>D</kbd> or <kbd>←</kbd> / <kbd>→</kbd> |
 | **Jump / Wall Jump** | <kbd>Space</kbd> / <kbd>W</kbd> / <kbd>↑</kbd> |
 | **Wall Slide** | Move into / contact any wall while falling |
-| **Respawn** | <kbd>R</kbd> |
+| **Claim Checkpoint** | <kbd>F</kbd> when standing near a flag |
+| **Respawn / Reset Run** | <kbd>R</kbd> |
 | **Toggle Debug Info** | <kbd>F3</kbd> or <kbd>`</kbd> (Backquote) |
 
 ---
@@ -52,6 +53,7 @@ physics: {
   jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
   coyoteTime: 0.12,       // Grace period after walking off edges
   jumpBufferTime: 0.12,   // Window to press jump before landing
+  bouncePadForce: 950,    // Launch power for springs and bounce pads
   wallSlideSpeed: 110,    // Downward slide speed when in contact with a wall
   wallJumpForceY: 540,    // Vertical jump height from a wall
   wallJumpForceX: 210,    // Outward impulse away from wall
@@ -59,35 +61,19 @@ physics: {
 }
 ```
 
-### 2. Adding / Modifying Platforms
-Find the `World` class in [`game.js`](game.js) to add or move platforms:
+### 2. Adding / Modifying Platforms & Bounce Pads
+Find the `World` class in [`game.js`](game.js) to add or move platforms and bounce pads:
 ```javascript
 this.platforms = [
   { x: 40, y: 340, width: 380, height: 40, label: 'Start' },
   { x: 480, y: 280, width: 140, height: 26 },
-  // Add your own platforms here: { x, y, width, height }
+];
+
+this.bouncePads = [
+  new BouncePad(320, 320, 'spring'), // Mechanical coiled spring
+  new BouncePad(640, 380, 'pad'),    // Futuristic neon bounce pad
 ];
 ```
 
 ### 3. Modifying Character & Colors
-Colors for the sky, player, platforms, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
-
-### 4. Adjusting the Lantern & Pink Glow Illumination
-You can tweak the lantern's lighting radius $r$, ambient darkness, and glow colors in `CONFIG.lighting` in [`game.js`](game.js):
-```javascript
-lighting: {
-  enabled: true,
-  ambientDarkness: 0.78, // Darkness level of the environment outside the light (0.0 to 1.0)
-  lantern: {
-    baseRadius: 210,     // Radius r in pixels (currently set to 5x player height: 42px * 5)
-    radiusMultiplier: 5, // Or tweak using character size multiplier
-    flickerAmount: 6.0,  // Natural flame flickering intensity
-    glowColorInner: 'rgba(244, 63, 94, 0.38)',  // Pink illumination wash
-    glowColorMid: 'rgba(236, 72, 153, 0.20)',   // Soft pink ambient aura
-    flameBodyColor: '#db2777',                  // Deep rose-pink flame body
-    flameMidColor: '#ec4899',                   // Hot-pink flame body
-    flameCoreColor: '#f472b6',                  // Vibrant saturated pink flame core
-  }
-}
-```
-
+Colors for the sky, player, platforms, springs, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
