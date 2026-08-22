@@ -50,6 +50,13 @@ const CONFIG = {
     playerHatBand: '#fbbf24',
     playerHatBrim: '#e11d48',
     particle: '#38bdf8',
+    enemyBody: '#a855f7',
+    enemyBodyLight: '#c084fc',
+    enemyGlow: 'rgba(168, 85, 247, 0.35)',
+    enemyEye: '#0f172a',
+    enemyHat: '#eab308',
+    enemyHatBand: '#38bdf8',
+    enemyHatBrim: '#ca8a04',
   }
 };
 
@@ -568,6 +575,319 @@ class Player {
 }
 
 // =============================================================================
+// 4B. ENEMY
+// =============================================================================
+class Enemy {
+  constructor(config) {
+    this.type = config.type; // 'walker' or 'flyer'
+    this.startX = config.x;
+    this.startY = config.y;
+    this.x = config.x;
+    this.y = config.y;
+    this.isDead = false;
+
+    // Set size based on type (flyers are smaller)
+    if (this.type === 'flyer') {
+      this.width = 20;
+      this.height = 28;
+      this.rangeX = config.rangeX !== undefined ? config.rangeX : 800; // Max radius from initial position
+    } else {
+      this.width = 30;
+      this.height = 42;
+    }
+
+    // Movement speeds
+    this.speed = config.speed || 100;
+    this.vx = this.speed;
+    this.vy = 0;
+    this.facing = 1;
+
+    // Behavior specific
+    if (this.type === 'walker') {
+      this.platform = config.platform;
+      // Position walker on top of platform if platform is provided
+      if (this.platform) {
+        this.y = this.platform.y - this.height;
+        this.startY = this.y;
+
+        // Force start position to be within safe boundaries (inset by 40px)
+        const inset = 40;
+        const minX = this.platform.x + inset;
+        const maxX = this.platform.x + this.platform.width - this.width - inset;
+        this.startX = Math.max(minX, Math.min(maxX, this.startX));
+        this.x = this.startX;
+      }
+    }
+
+    // Procedural animation state
+    this.scaleX = 1;
+    this.scaleY = 1;
+    this.walkAnimTimer = 0;
+    this.blinkTimer = 2.0 + Math.random() * 2.0;
+    this.isBlinking = false;
+    this.hoverTimer = Math.random() * Math.PI * 2;
+  }
+
+  reset() {
+    this.x = this.startX;
+    this.y = this.startY;
+    this.vx = this.speed;
+    this.vy = 0;
+    this.facing = 1;
+    this.isDead = false;
+    this.scaleX = 1;
+    this.scaleY = 1;
+    this.walkAnimTimer = 0;
+    this.hoverTimer = Math.random() * Math.PI * 2;
+  }
+
+  get centerX() {
+    return this.x + this.width / 2;
+  }
+
+  get centerY() {
+    return this.y + this.height / 2;
+  }
+
+  update(dt, player) {
+    if (this.isDead) return;
+
+    // 1. Movement logic
+    if (this.type === 'walker') {
+      this.x += this.vx * dt;
+      if (this.platform) {
+        const inset = 40;
+        const minX = this.platform.x + inset;
+        const maxX = this.platform.x + this.platform.width - this.width - inset;
+        if (this.x <= minX) {
+          this.x = minX;
+          this.vx = this.speed;
+          this.facing = 1;
+        } else if (this.x >= maxX) {
+          this.x = maxX;
+          this.vx = -this.speed;
+          this.facing = -1;
+        }
+      }
+      this.walkAnimTimer += dt * 10;
+    } else if (this.type === 'flyer') {
+      // Charges towards the player till a certain radius from their initial position
+      let targetX = this.startX;
+      let targetY = this.startY;
+
+      if (player) {
+        const dxToPlayer = player.centerX - this.centerX;
+        const dyToPlayer = player.centerY - this.centerY;
+        const distToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
+
+        const detectRadius = 800; // detect range
+        if (distToPlayer < detectRadius) {
+          targetX = player.centerX;
+          targetY = player.centerY;
+        }
+      }
+
+      const dxToTarget = targetX - this.centerX;
+      const dyToTarget = targetY - this.centerY;
+      const distToTarget = Math.sqrt(dxToTarget * dxToTarget + dyToTarget * dyToTarget);
+
+      if (distToTarget > 2) {
+        const vx = (dxToTarget / distToTarget) * this.speed;
+        const vy = (dyToTarget / distToTarget) * this.speed;
+        this.x += vx * dt;
+        this.y += vy * dt;
+        this.facing = vx > 0 ? 1 : -1;
+      } else {
+        this.hoverTimer += dt * 4;
+        this.y += Math.sin(this.hoverTimer) * 0.5;
+      }
+
+      // Clamp position to a maximum radius from start position
+      const dxFromStart = this.centerX - this.startX;
+      const dyFromStart = this.centerY - this.startY;
+      const distFromStart = Math.sqrt(dxFromStart * dxFromStart + dyFromStart * dyFromStart);
+      const maxRadius = this.rangeX;
+
+      if (distFromStart > maxRadius) {
+        const angle = Math.atan2(dyFromStart, dxFromStart);
+        this.x = this.startX + Math.cos(angle) * maxRadius - this.width / 2;
+        this.y = this.startY + Math.sin(angle) * maxRadius - this.height / 2;
+      }
+    }
+
+    // Squash & stretch recovery
+    this.scaleX += (1 - this.scaleX) * 12 * dt;
+    this.scaleY += (1 - this.scaleY) * 12 * dt;
+
+    // Eye blinking
+    this.blinkTimer -= dt;
+    if (this.blinkTimer <= 0) {
+      this.isBlinking = true;
+      if (this.blinkTimer <= -0.15) {
+        this.isBlinking = false;
+        this.blinkTimer = 2.5 + Math.random() * 3.0;
+      }
+    }
+  }
+
+  draw(ctx) {
+    if (this.isDead) return;
+
+    ctx.save();
+
+    // Pivot transform at character's bottom-center for natural squash & stretch
+    const bottomCenterX = this.centerX;
+    const bottomCenterY = this.y + this.height;
+
+    // Wobble animation
+    let walkOffset = 0;
+    if (this.type === 'walker') {
+      walkOffset = Math.sin(this.walkAnimTimer) * 2;
+    }
+
+    ctx.translate(bottomCenterX, bottomCenterY + walkOffset);
+    ctx.scale(this.scaleX, this.scaleY);
+
+    const w = this.width;
+    const h = this.height;
+    const cornerRadius = this.type === 'flyer' ? 5 : 8;
+
+    // Subtle enemy drop shadow
+    ctx.fillStyle = CONFIG.colors.enemyGlow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, w * 0.6, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body Gradient (Contrasting Purple to Violet)
+    const bodyGradient = ctx.createLinearGradient(-w / 2, -h, w / 2, 0);
+    bodyGradient.addColorStop(0, CONFIG.colors.enemyBodyLight);
+    bodyGradient.addColorStop(1, CONFIG.colors.enemyBody);
+
+    ctx.fillStyle = bodyGradient;
+    ctx.strokeStyle = '#7e22ce'; // Dark purple border
+    ctx.lineWidth = 2;
+
+    // Rounded rectangle body
+    this.drawRoundedRect(ctx, -w / 2, -h, w, h, cornerRadius);
+    ctx.fill();
+    ctx.stroke();
+
+    // Procedural Animated Eyes
+    if (!this.isBlinking) {
+      const eyeLookOffset = this.facing * (this.type === 'flyer' ? 2.5 : 3.5);
+      const eyeY = -h * 0.65;
+      const eyeSpacing = this.type === 'flyer' ? 4 : 6;
+      const eyeRadius = this.type === 'flyer' ? 2 : 3;
+
+      ctx.fillStyle = CONFIG.colors.enemyEye;
+
+      // Left Eye
+      ctx.beginPath();
+      ctx.arc(eyeLookOffset - eyeSpacing / 2, eyeY, eyeRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Right Eye
+      ctx.beginPath();
+      ctx.arc(eyeLookOffset + eyeSpacing / 2 + (this.type === 'flyer' ? 1 : 2), eyeY, eyeRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eye shine / highlight (white)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(eyeLookOffset - eyeSpacing / 2 + (this.type === 'flyer' ? 0.7 : 1), eyeY - (this.type === 'flyer' ? 0.7 : 1), this.type === 'flyer' ? 0.7 : 1, 0, Math.PI * 2);
+      ctx.arc(eyeLookOffset + eyeSpacing / 2 + (this.type === 'flyer' ? 1.7 : 3), eyeY - (this.type === 'flyer' ? 0.7 : 1), this.type === 'flyer' ? 0.7 : 1, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Blinking eye slit
+      ctx.strokeStyle = CONFIG.colors.enemyEye;
+      ctx.lineWidth = this.type === 'flyer' ? 1.5 : 2;
+      const eyeY = -h * 0.65;
+      ctx.beginPath();
+      ctx.moveTo((this.type === 'flyer' ? -3 : -5) + this.facing * (this.type === 'flyer' ? 1.5 : 2), eyeY);
+      ctx.lineTo((this.type === 'flyer' ? 4 : 7) + this.facing * (this.type === 'flyer' ? 1.5 : 2), eyeY);
+      ctx.stroke();
+    }
+
+    // Procedural Animated Hat (Contrasting Yellow/Gold theme)
+    this.drawHat(ctx, w, h);
+
+    ctx.restore();
+  }
+
+  drawHat(ctx, w, h) {
+    ctx.save();
+
+    // Top of head is at y = -h
+    const headTopY = -h;
+
+    // Hat tilt based on movement velocity and facing direction
+    const hatTilt = (this.vx / this.speed) * 0.14 + (this.facing * 0.05);
+
+    ctx.translate(0, headTopY + (this.type === 'flyer' ? 1.5 : 2));
+    ctx.rotate(hatTilt);
+
+    // 1. Hat Brim
+    ctx.fillStyle = CONFIG.colors.enemyHatBrim;
+    ctx.strokeStyle = '#854d0e'; // dark gold border
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, (w / 2) + (this.type === 'flyer' ? 4 : 6), this.type === 'flyer' ? 3 : 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 2. Hat Crown
+    const crownWidth = w * 0.72;
+    const crownHeight = this.type === 'flyer' ? 11 : 16;
+    const crownGradient = ctx.createLinearGradient(-crownWidth / 2, -crownHeight, crownWidth / 2, 0);
+    crownGradient.addColorStop(0, '#fde047');
+    crownGradient.addColorStop(1, CONFIG.colors.enemyHat);
+
+    ctx.fillStyle = crownGradient;
+    ctx.strokeStyle = '#854d0e';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(-crownWidth / 2, 0);
+    ctx.quadraticCurveTo(-crownWidth * 0.35, -crownHeight, -2 + this.facing * (this.type === 'flyer' ? 2 : 3), -crownHeight);
+    ctx.quadraticCurveTo(crownWidth * 0.35, -crownHeight, crownWidth / 2, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Hat Band (Cyan accent ribbon)
+    ctx.fillStyle = CONFIG.colors.enemyHatBand;
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -crownWidth / 2 + 1, this.type === 'flyer' ? -3 : -4.5, crownWidth - 2, this.type === 'flyer' ? 2.5 : 4, 1.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // 4. Pom-pom on Top of Hat
+    ctx.fillStyle = '#67e8f9';
+    ctx.beginPath();
+    ctx.arc(-2 + this.facing * (this.type === 'flyer' ? 2 : 3), -crownHeight, this.type === 'flyer' ? 2.5 : 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+}
+
+// =============================================================================
 // 5. CAMERA SYSTEM
 // =============================================================================
 class Camera {
@@ -703,7 +1023,21 @@ class Game {
 
     this.camera.snapTo(this.player.centerX, this.player.centerY);
 
+    this.enemies = [
+      // Walkers on platforms (Note: Safe 40px edge-insets are applied automatically inside Enemy.update)
+      new Enemy({ type: 'walker', platform: this.world.platforms[0], x: 220, speed: 70 }),
+      new Enemy({ type: 'walker', platform: this.world.platforms[4], x: 1200, speed: 90 }),
+      new Enemy({ type: 'walker', platform: this.world.platforms[8], x: 2050, speed: 110 }),
+
+      // Flyers spawned away from the expected path (charge at player when near, rangeX is max charge radius)
+      new Enemy({ type: 'flyer', x: 580, y: 390, rangeX: 800, speed: 110 }),  // Deep in the first platform gap
+      new Enemy({ type: 'flyer', x: 1050, y: 390, rangeX: 800, speed: 115 }), // Deep in the middle platform gap
+      new Enemy({ type: 'flyer', x: 1850, y: 90, rangeX: 800, speed: 110 }),  // High in the sky over the runway gap
+      new Enemy({ type: 'flyer', x: 280, y: 30, rangeX: 800, speed: 95 })     // High in the sky above the starting area
+    ];
+
     this.respawnCount = 0;
+    this.killsCount = 0;
     this.debugMode = false;
 
     this.lastTime = performance.now();
@@ -729,6 +1063,14 @@ class Game {
     // Update Player & Physics
     this.player.update(dt, this.input, this.world.platforms, this.particleSystem);
 
+    // Update Enemies
+    for (const enemy of this.enemies) {
+      enemy.update(dt, this.player);
+    }
+
+    // Check Player-Enemy collisions
+    this.checkEnemyCollisions(dt);
+
     // Fall-off-the-map detection & respawn
     if (this.player.y > CONFIG.world.deathY) {
       this.triggerRespawn();
@@ -742,9 +1084,53 @@ class Game {
     this.input.resetFrame();
   }
 
+  checkEnemyCollisions(dt) {
+    for (const enemy of this.enemies) {
+      if (enemy.isDead) continue;
+
+      if (this.player.checkCollision(this.player, enemy)) {
+        const playerBottom = this.player.y + this.player.height;
+        const enemyTop = enemy.y;
+
+        const isFalling = this.player.vy >= 0;
+        const wasAbove = (playerBottom - this.player.vy * dt) <= (enemyTop + 15);
+
+        if (isFalling && wasAbove) {
+          // Stomp!
+          enemy.isDead = true;
+          this.killsCount++;
+          // Bounce player up
+          this.player.vy = -CONFIG.physics.jumpForce * 0.75;
+          this.player.scaleX = 0.8;
+          this.player.scaleY = 1.35;
+
+          // Emit death particles in enemy color
+          this.particleSystem.emit(enemy.centerX, enemy.centerY, 20, {
+            color: CONFIG.colors.enemyBody,
+            sizeMin: 3,
+            sizeMax: 8,
+            speedMin: 80,
+            speedMax: 220,
+            lifeMin: 0.35,
+            lifeMax: 0.75,
+          });
+        } else {
+          // Touched in any other way -> Player dies & enemies reset
+          this.triggerRespawn();
+          break;
+        }
+      }
+    }
+  }
+
   triggerRespawn() {
     this.respawnCount++;
+    this.killsCount = 0;
     this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
+    // Revive all enemies
+    for (const enemy of this.enemies) {
+      enemy.reset();
+    }
   }
 
   render() {
@@ -775,6 +1161,11 @@ class Game {
     // Draw Particles
     this.particleSystem.draw(ctx);
 
+    // Draw Enemies
+    for (const enemy of this.enemies) {
+      enemy.draw(ctx);
+    }
+
     // Draw Player
     this.player.draw(ctx);
 
@@ -788,9 +1179,31 @@ class Game {
     // -------------------------------------------------------------------------
     // 3. Screen Space UI & HUD
     // -------------------------------------------------------------------------
+    this.drawScoreboard(ctx);
+
     if (this.debugMode) {
       this.drawDebugOverlay(ctx);
     }
+  }
+
+  drawScoreboard(ctx) {
+    ctx.save();
+    
+    // Mario-style font styling (bold monospace with clean shadow)
+    ctx.font = "bold 28px 'Courier New', 'Lucida Console', monospace";
+    ctx.textAlign = "center";
+    
+    const killsText = `KILLS x ${String(this.killsCount).padStart(2, '0')}`;
+    
+    // Draw thick black drop shadow
+    ctx.fillStyle = "#000000";
+    ctx.fillText(killsText, this.canvas.width / 2 + 3, 46 + 3);
+    
+    // Draw solid white text on top
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(killsText, this.canvas.width / 2, 46);
+    
+    ctx.restore();
   }
 
   drawParallaxStars(ctx) {
@@ -823,6 +1236,15 @@ class Game {
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
+
+    // Enemy Hitboxes
+    for (const enemy of this.enemies) {
+      if (!enemy.isDead) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      }
+    }
 
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
