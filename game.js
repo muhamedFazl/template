@@ -15,35 +15,36 @@ const CONFIG = {
     height: 540,
   },
   physics: {
-    gravity: 1400,          // Pixels per second squared
-    terminalVelocity: 900,  // Max downward speed
-    moveSpeed: 340,         // Horizontal max speed
-    acceleration: 2400,     // Ground acceleration
-    airAcceleration: 1700,  // Air control acceleration
-    friction: 2000,         // Ground deceleration
-    airFriction: 350,       // Air deceleration
-    jumpForce: 560,         // Initial jump velocity (negative Y)
-    jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
-    coyoteTime: 0.12,       // Grace period (seconds) to jump after leaving a ledge
-    jumpBufferTime: 0.12,   // Window (seconds) to register jump before landing
+    gravity: 1150,          // Balanced falling gravity (px/s^2)
+    terminalVelocity: 580,  // Controlled max downward speed
+    moveSpeed: 230,         // Crisp, controllable horizontal run speed
+    acceleration: 1700,     // Snappy acceleration to top speed
+    airAcceleration: 1200,  // Fluid air control acceleration
+    friction: 2200,         // Immediate, tight ground stop
+    airFriction: 600,       // Controlled air deceleration
+    jumpForce: 490,         // Jump velocity (~95px height arc)
+    jumpCutMultiplier: 0.40,// Responsive variable jump height
+    coyoteTime: 0.12,       // Grace period after walking off edges
+    jumpBufferTime: 0.12,   // Window to press jump before landing
   },
   grapple: {
-    maxRange: 400,          // Max distance to latch onto an anchor point
-    minRopeLength: 40,      // Minimum tether length when reeling in
-    maxRopeLength: 420,     // Maximum tether length when reeling out
-    swingForce: 2800,       // Tangential acceleration applied by A/D keys during swing
-    swingAirResistance: 0.08, // Subtle damping during swing
-    reelInSpeed: 320,       // Pixels per second reeling in (W / Up)
-    reelOutSpeed: 260,      // Pixels per second extending tether (S / Down)
-    boostJumpImpulse: 460,  // Tangential velocity boost on jump release
-    boostUpwardImpulse: 300,// Extra upward launch impulse on boost jump
-    maxSwingSpeed: 1100,    // Top speed clamp while swinging / boosting
-    projectileSpeed: 3200,  // Hook firing animation speed (pixels/sec)
+    maxRange: 340,          // Reachable anchor detection range
+    minRopeLength: 45,      // Minimum tether length when reeling in
+    maxRopeLength: 360,     // Maximum tether length when reeling out
+    swingForce: 950,        // Tangential pumping acceleration (smooth & controllable)
+    swingAirResistance: 0.22, // Natural pendulum damping (prevents runaway speeds)
+    reelInSpeed: 180,       // Reeling in speed
+    reelOutSpeed: 180,      // Extending tether speed
+    boostJumpImpulse: 180,  // Clean slingshot impulse on jump release
+    boostUpwardImpulse: 200,// Upward launch impulse
+    maxSwingSpeed: 440,     // Max speed ceiling during pendulum swing
+    boostMaxSpeed: 380,     // Max horizontal speed ceiling after boost launch
+    projectileSpeed: 2800,  // Hook firing animation speed
   },
   camera: {
-    lerpSpeed: 6.5,         // Camera follow tightness
-    lookAheadDist: 85,      // Lookahead distance in facing direction
-    verticalOffset: -30,    // Vertical bias for better view of what's ahead
+    lerpSpeed: 6.0,         // Camera follow tightness
+    lookAheadDist: 60,      // Lookahead distance in facing direction
+    verticalOffset: -25,    // Vertical bias
   },
   world: {
     spawnPoint: { x: 140, y: 220 },
@@ -878,57 +879,56 @@ class Player {
     let rx = this.centerX - anchor.x;
     let ry = this.centerY - anchor.y;
     let currentDist = Math.sqrt(rx * rx + ry * ry);
-
     if (currentDist < 1) currentDist = 1;
 
-    let urX = rx / currentDist;
-    let urY = ry / currentDist;
-
-    let utX = -urY;
-    let utY = urX;
+    let currentAngle = Math.atan2(ry, rx);
 
     // A. Reeling In / Out
     if (input.reelIn) {
-      const oldLen = this.ropeLength;
       this.ropeLength = Math.max(CONFIG.grapple.minRopeLength, this.ropeLength - CONFIG.grapple.reelInSpeed * dt);
       if (soundSystem) soundSystem.playGrappleReel();
-
-      if (this.ropeLength < oldLen) {
-        const boostFactor = Math.min(1.0 + (oldLen - this.ropeLength) / oldLen * 0.5, 1.05);
-        this.vx *= boostFactor;
-        this.vy *= boostFactor;
-      }
     } else if (input.reelOut) {
       this.ropeLength = Math.min(CONFIG.grapple.maxRopeLength, this.ropeLength + CONFIG.grapple.reelOutSpeed * dt);
     }
 
-    // B. Swing Momentum Pumping
+    // Unit tangential vector pointing CCW: ut = (-sin(theta), cos(theta))
+    const utX = -Math.sin(currentAngle);
+    const utY = Math.cos(currentAngle);
+
+    // Current tangential velocity
+    let vt = this.vx * utX + this.vy * utY;
+
+    // B. Swing Momentum Pumping (A / D or Left / Right)
     let moveDir = 0;
     if (input.left) moveDir -= 1;
     if (input.right) moveDir += 1;
 
     if (moveDir !== 0) {
       this.facing = moveDir;
-      const pumpSign = Math.sign(utX) * moveDir;
-      const pumpAccel = pumpSign * CONFIG.grapple.swingForce * dt;
-      this.vx += utX * pumpAccel;
-      this.vy += utY * pumpAccel;
+      // Pump in the tangential direction that moves horizontally in desired direction
+      const pumpDir = Math.sign(utX) * moveDir;
+      vt += pumpDir * CONFIG.grapple.swingForce * dt;
     }
 
-    // C. Grapple Jump / Boost Launch
+    // C. Grapple Jump / Boost Launch Release
     if (this.jumpBufferTimer > 0) {
       this.jumpBufferTimer = 0;
       this.detachGrapple();
 
-      const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-      const launchDirX = currentSpeed > 10 ? this.vx / currentSpeed : this.facing;
-      const launchDirY = currentSpeed > 10 ? this.vy / currentSpeed : -0.7;
+      const swingDirSign = Math.sign(vt) || this.facing;
+      const launchDirX = utX * swingDirSign;
+      const launchDirY = utY * swingDirSign;
+      const launchSpeed = Math.abs(vt) + CONFIG.grapple.boostJumpImpulse;
 
-      this.vx += launchDirX * CONFIG.grapple.boostJumpImpulse;
-      this.vy = Math.min(this.vy, 0) - CONFIG.grapple.boostUpwardImpulse;
+      this.vx = launchDirX * launchSpeed;
+      this.vy = Math.min(launchDirY * launchSpeed, -CONFIG.grapple.boostUpwardImpulse);
 
-      this.scaleX = 0.7;
-      this.scaleY = 1.4;
+      if (Math.abs(this.vx) > CONFIG.grapple.boostMaxSpeed) {
+        this.vx = Math.sign(this.vx) * CONFIG.grapple.boostMaxSpeed;
+      }
+
+      this.scaleX = 0.8;
+      this.scaleY = 1.3;
 
       if (soundSystem) soundSystem.playGrappleBoost();
       if (particleSystem) {
@@ -938,42 +938,33 @@ class Player {
       return;
     }
 
-    // D. Gravity & Pendulum Constraint
-    this.vy += CONFIG.physics.gravity * dt;
+    // D. Gravity on Pendulum (pulls toward bottom angle theta = PI/2)
+    const gravityAccel = -CONFIG.physics.gravity * Math.sin(currentAngle - Math.PI / 2);
+    vt += gravityAccel * dt;
 
-    let nextCenterX = this.centerX + this.vx * dt;
-    let nextCenterY = this.centerY + this.vy * dt;
+    // Natural Damping / Air Resistance (smooth, prevents runaway acceleration)
+    vt *= Math.max(0, 1 - CONFIG.grapple.swingAirResistance * dt);
 
-    let nextRx = nextCenterX - anchor.x;
-    let nextRy = nextCenterY - anchor.y;
-    let nextDist = Math.sqrt(nextRx * nextRx + nextRy * nextRy);
-
-    if (nextDist >= this.ropeLength) {
-      const nUrX = nextRx / nextDist;
-      const nUrY = nextRy / nextDist;
-      const nUtX = -nUrY;
-      const nUtY = nUrX;
-
-      nextCenterX = anchor.x + nUrX * this.ropeLength;
-      nextCenterY = anchor.y + nUrY * this.ropeLength;
-
-      const tangentVel = this.vx * nUtX + this.vy * nUtY;
-      const dampedTangentVel = tangentVel * (1 - CONFIG.grapple.swingAirResistance * dt);
-
-      this.vx = nUtX * dampedTangentVel;
-      this.vy = nUtY * dampedTangentVel;
+    // Clamp maximum swing speed
+    if (Math.abs(vt) > CONFIG.grapple.maxSwingSpeed) {
+      vt = Math.sign(vt) * CONFIG.grapple.maxSwingSpeed;
     }
 
-    const totalSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    if (totalSpeed > CONFIG.grapple.maxSwingSpeed) {
-      const scale = CONFIG.grapple.maxSwingSpeed / totalSpeed;
-      this.vx *= scale;
-      this.vy *= scale;
-    }
+    // Advance angle along constraint circle
+    const angularSpeed = vt / Math.max(this.ropeLength, 10);
+    const nextAngle = currentAngle + angularSpeed * dt;
+
+    const nextCenterX = anchor.x + Math.cos(nextAngle) * this.ropeLength;
+    const nextCenterY = anchor.y + Math.sin(nextAngle) * this.ropeLength;
+
+    // Reconstruct velocity from tangential speed
+    this.vx = -Math.sin(nextAngle) * vt;
+    this.vy = Math.cos(nextAngle) * vt;
 
     this.x = nextCenterX - this.width / 2;
     this.y = nextCenterY - this.height / 2;
 
+    // Platform collision resolution while swinging
     this.isGrounded = false;
     for (const plat of platforms) {
       if (this.checkCollision(this, plat)) {
@@ -982,13 +973,14 @@ class Player {
           this.vy = 0;
           this.isGrounded = true;
         } else {
-          this.vx *= -0.3;
-          this.vy *= -0.3;
+          vt *= -0.2;
+          this.vx *= -0.2;
+          this.vy *= -0.2;
         }
       }
     }
 
-    const ropeAngle = Math.atan2(this.centerY - anchor.y, this.centerX - anchor.x) - Math.PI / 2;
+    const ropeAngle = nextAngle - Math.PI / 2;
     this.bodyRotation += (ropeAngle - this.bodyRotation) * 14 * dt;
   }
 
@@ -1004,12 +996,18 @@ class Player {
       const accel = this.isGrounded ? CONFIG.physics.acceleration : CONFIG.physics.airAcceleration;
       this.vx += moveDir * accel * dt;
 
-      if (Math.abs(this.vx) > CONFIG.physics.moveSpeed && Math.sign(this.vx) === moveDir) {
-        const diff = Math.abs(this.vx) - CONFIG.physics.moveSpeed;
-        this.vx -= Math.sign(this.vx) * Math.min(diff, 600 * dt);
+      if (this.isGrounded) {
+        if (Math.abs(this.vx) > CONFIG.physics.moveSpeed) {
+          this.vx = Math.sign(this.vx) * CONFIG.physics.moveSpeed;
+        }
+      } else {
+        if (Math.abs(this.vx) > CONFIG.physics.moveSpeed) {
+          const excess = Math.abs(this.vx) - CONFIG.physics.moveSpeed;
+          this.vx -= Math.sign(this.vx) * Math.min(excess, 700 * dt);
+        }
       }
 
-      this.walkAnimTimer += dt * 14;
+      this.walkAnimTimer += dt * 12;
     } else {
       const friction = this.isGrounded ? CONFIG.physics.friction : CONFIG.physics.airFriction;
       if (Math.abs(this.vx) > 0) {
@@ -1023,22 +1021,25 @@ class Player {
       this.walkAnimTimer = 0;
     }
 
+    // Jump Handling
     if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
       this.vy = -CONFIG.physics.jumpForce;
       this.jumpBufferTimer = 0;
       this.coyoteTimer = 0;
       this.isGrounded = false;
 
-      this.scaleX = 0.75;
-      this.scaleY = 1.35;
+      this.scaleX = 0.8;
+      this.scaleY = 1.3;
       if (soundSystem) soundSystem.playJump();
       if (particleSystem) particleSystem.emitDust(this.centerX, this.y + this.height);
     }
 
+    // Variable jump cut
     if (!input.jump && this.vy < 0) {
       this.vy += CONFIG.physics.gravity * (1 - CONFIG.physics.jumpCutMultiplier) * dt * 2.5;
     }
 
+    // Gravity & Terminal Velocity
     this.vy += CONFIG.physics.gravity * dt;
     if (this.vy > CONFIG.physics.terminalVelocity) {
       this.vy = CONFIG.physics.terminalVelocity;
@@ -1070,8 +1071,8 @@ class Player {
           this.isGrounded = true;
 
           if (!this.wasGrounded) {
-            this.scaleX = 1.35;
-            this.scaleY = 0.7;
+            this.scaleX = 1.25;
+            this.scaleY = 0.75;
             if (particleSystem) particleSystem.emitDust(this.centerX, this.y + this.height);
           }
         } else if (this.vy < 0) {
@@ -1381,22 +1382,22 @@ class World {
       // 1. Starting Platform & Tutorial Area
       { x: 40, y: 340, width: 340, height: 40, label: 'Start' },
 
-      // 2. First Chasm Stepping Stones
-      { x: 480, y: 320, width: 120, height: 26 },
+      // 2. Stepping Stones
+      { x: 480, y: 320, width: 140, height: 26 },
       { x: 680, y: 260, width: 140, height: 26 },
 
       // 3. High Vantage Peak
       { x: 920, y: 130, width: 220, height: 30, label: 'Peak' },
 
-      // 4. Massive Double-Chasm Abyss (Requires Grapple Chain)
-      { x: 1240, y: 360, width: 140, height: 30 },
-      { x: 1540, y: 320, width: 160, height: 30 },
-      { x: 1840, y: 260, width: 160, height: 30 },
+      // 4. Multi-Anchor Chasm Sequence
+      { x: 1260, y: 340, width: 140, height: 30 },
+      { x: 1520, y: 300, width: 160, height: 30 },
+      { x: 1800, y: 260, width: 160, height: 30 },
 
-      // 5. Sky High Runway & Grand Finale
-      { x: 2120, y: 180, width: 380, height: 40, label: 'Sky Runway' },
+      // 5. Sky Runway Finale
+      { x: 2100, y: 180, width: 380, height: 40, label: 'Sky Runway' },
 
-      // 6. Upper Secret Sanctuary Platforms (Reach via Super Boost Swings)
+      // 6. Upper Secret Sanctuary Platforms (Reach via Boost Swings)
       { x: 280, y: 120, width: 120, height: 24, label: 'Secret Island' },
       { x: 520, y: 60, width: 110, height: 24 },
       { x: 1380, y: 80, width: 130, height: 24, label: 'High Spire' },
@@ -1404,21 +1405,21 @@ class World {
     ];
 
     this.anchors = [
-      // Anchor 1: Above start gap
-      new GrappleAnchor(420, 140, 'Swing 1'),
+      // Anchor 1: Start Gap Swing
+      new GrappleAnchor(440, 140, 'Swing 1'),
 
-      // Anchor 2: High vault swing to Peak
-      new GrappleAnchor(800, 40, 'High Vault'),
+      // Anchor 2: Vault up to Peak
+      new GrappleAnchor(840, 70, 'High Vault'),
 
-      // Anchor 3 & 4: Massive Chasm Grapple Chain
-      new GrappleAnchor(1100, 160, 'Chasm Anchor A'),
-      new GrappleAnchor(1400, 140, 'Chasm Anchor B'),
-      new GrappleAnchor(1700, 100, 'Chasm Anchor C'),
+      // Anchor 3, 4, 5: Chasm Swings
+      new GrappleAnchor(1200, 140, 'Chasm A'),
+      new GrappleAnchor(1460, 130, 'Chasm B'),
+      new GrappleAnchor(1740, 100, 'Chasm C'),
 
-      // Anchor 5: Super Slingshot to Sky Runway
-      new GrappleAnchor(2000, 60, 'Super Boost'),
+      // Anchor 6: Slingshot to Sky Runway
+      new GrappleAnchor(2020, 70, 'Super Boost'),
 
-      // Secret Upper Route Anchors
+      // Upper Route Anchors
       new GrappleAnchor(400, 20, 'Secret Ring'),
       new GrappleAnchor(1540, -40, 'Sanctuary Spire'),
     ];

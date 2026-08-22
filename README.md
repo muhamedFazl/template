@@ -58,17 +58,18 @@ template/
 Open [`game.js`](game.js) and modify `CONFIG.grapple`:
 ```javascript
 grapple: {
-  maxRange: 400,          // Max distance to latch onto anchor
-  minRopeLength: 40,      // Minimum tether length when reeling in
-  maxRopeLength: 420,     // Maximum tether length when reeling out
-  swingForce: 2800,       // Tangential acceleration applied by A/D keys
-  swingAirResistance: 0.08, // Subtle damping during swing
-  reelInSpeed: 320,       // Reeling in speed (pixels/sec)
-  reelOutSpeed: 260,      // Reeling out speed (pixels/sec)
-  boostJumpImpulse: 460,  // Tangential velocity boost on jump release
-  boostUpwardImpulse: 300,// Upward launch boost on release
-  maxSwingSpeed: 1100,    // Top speed clamp
-  projectileSpeed: 3200,  // Hook firing speed
+  maxRange: 340,          // Max distance to latch onto anchor
+  minRopeLength: 45,      // Minimum tether length when reeling in
+  maxRopeLength: 360,     // Maximum tether length when reeling out
+  swingForce: 950,        // Tangential acceleration applied by A/D keys
+  swingAirResistance: 0.22, // Natural pendulum damping
+  reelInSpeed: 180,       // Reeling in speed (pixels/sec)
+  reelOutSpeed: 180,      // Reeling out speed (pixels/sec)
+  boostJumpImpulse: 180,  // Tangential velocity boost on jump release
+  boostUpwardImpulse: 200,// Upward launch boost on release
+  maxSwingSpeed: 440,     // Top speed clamp
+  boostMaxSpeed: 380,     // Boost speed clamp
+  projectileSpeed: 2800,  // Hook firing speed
 }
 ```
 
@@ -76,8 +77,8 @@ grapple: {
 Find the `World` class in [`game.js`](game.js) to add or position anchors:
 ```javascript
 this.anchors = [
-  new GrappleAnchor(420, 140, 'Swing 1'),
-  new GrappleAnchor(800, 40, 'High Vault'),
+  new GrappleAnchor(440, 140, 'Swing 1'),
+  new GrappleAnchor(840, 70, 'High Vault'),
   // Add your own anchors here: new GrappleAnchor(x, y, label)
 ];
 ```
