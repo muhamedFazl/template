@@ -120,6 +120,10 @@ class InputManager {
     return this.isJustPressed('KeyR');
   }
 
+  get interactJustPressed() {
+    return this.isJustPressed('KeyF') || this.isJustPressed('KeyE');
+  }
+
   get debugJustPressed() {
     return this.isJustPressed('F3') || this.isJustPressed('Backquote');
   }
@@ -665,9 +669,10 @@ class Checkpoint {
     this.flagWidth = 36;
     this.flagHeight = 22;
 
-    // Trigger hitbox dimensions
-    this.width = 46;
-    this.height = this.poleHeight + 12;
+    // Trigger hitbox dimensions (generous interactive zone)
+    this.width = 64;
+    this.height = this.poleHeight + 16;
+    this.isPlayerInRange = false;
 
     // Animation & juice state
     this.waveTimer = Math.random() * 10;
@@ -714,9 +719,12 @@ class Checkpoint {
     this.isActive = false;
   }
 
-  update(dt, player, particleSystem) {
+  update(dt, player, particleSystem, input) {
     this.waveTimer += dt * 4.5;
     this.glowTimer += dt * 3.0;
+
+    // Proximity detection
+    this.isPlayerInRange = this.checkCollision(player);
 
     if (this.isActive) {
       // Smoothly raise flag to the top of the mast
@@ -737,12 +745,12 @@ class Checkpoint {
       if (this.flagRaiseProgress > 0.15) {
         this.flagRaiseProgress = Math.max(0.15, this.flagRaiseProgress - dt * 1.5);
       }
-    }
 
-    // Check collision with player
-    if (!this.isActive && this.checkCollision(player)) {
-      this.activate(particleSystem);
-      return true; // Newly activated
+      // Require user keypress (F or E) when in range to activate
+      if (this.isPlayerInRange && input && input.interactJustPressed) {
+        this.activate(particleSystem);
+        return true; // Newly activated
+      }
     }
 
     return false;
@@ -751,7 +759,7 @@ class Checkpoint {
   draw(ctx, player) {
     ctx.save();
 
-    const isNear = player && Math.hypot(player.centerX - this.x, player.centerY - (this.y - 30)) < 160;
+    const isNear = player && Math.hypot(player.centerX - this.x, player.centerY - (this.y - 30)) < 180;
     const pulse = Math.sin(this.glowTimer) * 0.5 + 0.5;
 
     // 1. Ground Light Aura & Pedestal Shadow
@@ -761,6 +769,10 @@ class Checkpoint {
       ctx.fillStyle = `rgba(16, 185, 129, ${0.25 + pulse * 0.2})`;
       ctx.shadowColor = '#10b981';
       ctx.shadowBlur = 14 + pulse * 8;
+    } else if (this.isPlayerInRange) {
+      ctx.fillStyle = `rgba(56, 189, 248, ${0.25 + pulse * 0.2})`;
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 12;
     } else {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.shadowBlur = 0;
@@ -770,7 +782,7 @@ class Checkpoint {
 
     // 2. Pedestal Base
     ctx.fillStyle = '#1e293b';
-    ctx.strokeStyle = '#475569';
+    ctx.strokeStyle = this.isPlayerInRange && !this.isActive ? '#38bdf8' : '#475569';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     this.drawRoundedRect(ctx, this.x - 14, this.y - 7, 28, 7, 3);
@@ -778,9 +790,9 @@ class Checkpoint {
     ctx.stroke();
 
     // Base glowing power core
-    ctx.fillStyle = this.isActive ? '#10b981' : '#ef4444';
-    if (this.isActive) {
-      ctx.shadowColor = '#10b981';
+    ctx.fillStyle = this.isActive ? '#10b981' : (this.isPlayerInRange ? '#38bdf8' : '#ef4444');
+    if (this.isActive || this.isPlayerInRange) {
+      ctx.shadowColor = this.isActive ? '#10b981' : '#38bdf8';
       ctx.shadowBlur = 8;
     }
     ctx.beginPath();
@@ -804,10 +816,13 @@ class Checkpoint {
     ctx.fillRect(this.x - 3, this.y - 12, 6, 2);
 
     // 4. Pole Top Finial (Glowing Golden Finial Orb)
-    ctx.fillStyle = this.isActive ? '#fde047' : '#94a3b8';
+    ctx.fillStyle = this.isActive ? '#fde047' : (this.isPlayerInRange ? '#7dd3fc' : '#94a3b8');
     if (this.isActive) {
       ctx.shadowColor = '#f59e0b';
       ctx.shadowBlur = 14 + pulse * 6;
+    } else if (this.isPlayerInRange) {
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 10 + pulse * 5;
     }
     ctx.beginPath();
     ctx.arc(this.x, poleTopY - 2, 5.5, 0, Math.PI * 2);
@@ -917,21 +932,84 @@ class Checkpoint {
 
     ctx.restore();
 
-    // 6. Floating Label & Checkpoint Status Badge
-    if (this.isActive || isNear) {
-      const labelY = poleTopY - 18;
-      ctx.save();
+    // 6. Floating Label & Key Prompt
+    const labelY = poleTopY - 20;
+    ctx.save();
+
+    if (this.isActive) {
+      // Active Checkpoint Badge
       ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
+      const tagText = `🚩 ${this.label}`;
+      const metrics = ctx.measureText(tagText);
+      const bgW = metrics.width + 18;
+      const bgH = 22;
 
-      const tagText = this.isActive ? `🚩 ${this.label}` : this.label;
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.92)';
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, this.x - bgW / 2, labelY - bgH / 2, bgW, bgH, 11);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#a7f3d0';
+      ctx.fillText(tagText, this.x, labelY + 4);
+    } else if (this.isPlayerInRange) {
+      // Interactive [F] ACTIVATE CHECKPOINT Prompt
+      const bounce = Math.sin(this.glowTimer * 2.5) * 2.5;
+      const promptY = labelY + bounce;
+
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      const promptText = `CLAIM CHECKPOINT`;
+      const textMetrics = ctx.measureText(promptText);
+      const bgW = textMetrics.width + 38;
+      const bgH = 26;
+
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.65)';
+      ctx.shadowBlur = 12 + pulse * 6;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, this.x - bgW / 2, promptY - bgH / 2, bgW, bgH, 13);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Draw Key Kbd Box [F]
+      const kbdX = this.x - bgW / 2 + 5;
+      const kbdY = promptY - 9;
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, kbdX, kbdY, 18, 18, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('F', kbdX + 9, kbdY + 13);
+
+      // Prompt Text
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(promptText, kbdX + 24, promptY + 3.5);
+    } else if (isNear) {
+      // Subtle Dormant Name Tag
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const tagText = `${this.label}`;
       const metrics = ctx.measureText(tagText);
       const bgW = metrics.width + 16;
       const bgH = 20;
 
-      // Label background pill
-      ctx.fillStyle = this.isActive ? 'rgba(6, 78, 59, 0.9)' : 'rgba(15, 23, 42, 0.85)';
-      ctx.strokeStyle = this.isActive ? '#34d399' : 'rgba(255, 255, 255, 0.2)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.lineWidth = 1;
 
       ctx.beginPath();
@@ -939,11 +1017,8 @@ class Checkpoint {
       ctx.fill();
       ctx.stroke();
 
-      // Label text
-      ctx.fillStyle = this.isActive ? '#a7f3d0' : '#e2e8f0';
+      ctx.fillStyle = '#94a3b8';
       ctx.fillText(tagText, this.x, labelY + 4);
-
-      ctx.restore();
     }
 
     ctx.restore();
@@ -1005,9 +1080,9 @@ class World {
     ];
   }
 
-  update(dt, player, particleSystem, onCheckpointActivated) {
+  update(dt, player, particleSystem, input, onCheckpointActivated) {
     for (const cp of this.checkpoints) {
-      const activated = cp.update(dt, player, particleSystem);
+      const activated = cp.update(dt, player, particleSystem, input);
       if (activated) {
         // Deactivate all other checkpoints so only current one is active
         for (const other of this.checkpoints) {
@@ -1146,11 +1221,11 @@ class Game {
       this.triggerRespawn();
     }
 
-    // Update World & Checkpoints
-    this.world.update(dt, this.player, this.particleSystem, (activatedCheckpoint) => {
+    // Update World & Checkpoints (passes input for interact key)
+    this.world.update(dt, this.player, this.particleSystem, this.input, (activatedCheckpoint) => {
       this.currentCheckpoint = activatedCheckpoint;
       this.currentSpawnPoint = { ...activatedCheckpoint.spawnPoint };
-      this.showCheckpointBanner('CHECKPOINT REACHED!', activatedCheckpoint.label);
+      this.showCheckpointBanner('CHECKPOINT ACTIVATED!', activatedCheckpoint.label);
       this.updateHUD();
     });
 
