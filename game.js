@@ -4216,7 +4216,10 @@ class Game {
     // Draw solid white text on top
     ctx.fillStyle = "#ffffff";
     ctx.fillText(killsText, this.canvas.width / 2, 46);
-    
+
+    ctx.restore();
+  }
+
   drawCheckpointBanner(ctx, w, h) {
     const banner = this.checkpointBanner;
     const elapsed = banner.maxTime - banner.timer;
