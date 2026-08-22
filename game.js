@@ -1773,7 +1773,6 @@ class Game {
   triggerRespawn() {
     this.respawnCount++;
     this.killsCount = 0;
-    this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
     // Revive all enemies
     for (const enemy of this.enemies) {
       enemy.reset();
@@ -1856,6 +1855,9 @@ class Game {
     ctx.fillStyle = "#ffffff";
     ctx.fillText(killsText, this.canvas.width / 2, 46);
     
+    ctx.restore();
+  }
+
   drawCheckpointBanner(ctx, w, h) {
     const banner = this.checkpointBanner;
     const elapsed = banner.maxTime - banner.timer;
