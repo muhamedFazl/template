@@ -4,8 +4,9 @@
  * 
  * Features:
  * - Responsive physics with coyote time, jump buffering & variable jump height
- * - Oscillating moving platforms (horizontal & vertical with smooth sine easing)
- * - Crumbling platforms (shake on step, break away, and respawn)
+ * - Oscillating moving platforms (multi-block horizontal & vertical sine easing)
+ * - Shiny aesthetics: animated specular sheen sweep, glossy highlights, corner star glints & neon glow
+ * - Crumbling platforms (shake on step, break away, fall, and respawn)
  * - Hybrid moving & crumbling platforms (oscillate along tracks, fall when stepped on)
  * - Particle system with landing dust, crumble debris & respawn sparkles
  * - Parallax starry sky & procedural character squash/stretch animation
@@ -46,30 +47,42 @@ const CONFIG = {
     skyBottom: '#1a2333',
     grid: 'rgba(255, 255, 255, 0.03)',
 
-    // Static Platforms
+    // Static Platforms (Shiny Emerald)
     platformTop: '#4ade80',
+    platformTopGloss: '#bbf7d0',
     platformBody: '#1e293b',
-    platformBorder: '#334155',
+    platformBodyDark: '#0f172a',
+    platformBorder: '#22c55e',
+    platformGlow: 'rgba(74, 222, 128, 0.25)',
 
-    // Moving Platforms
+    // Moving Platforms (Shiny Tech Blue / Cyan)
     platformMovingTop: '#38bdf8',
+    platformMovingTopGloss: '#e0f2fe',
     platformMovingBody: '#0f2744',
+    platformMovingBodyDark: '#031926',
     platformMovingBorder: '#0284c7',
-    platformTrack: 'rgba(56, 189, 248, 0.22)',
-    platformTrackDot: 'rgba(56, 189, 248, 0.65)',
+    platformMovingGlow: 'rgba(56, 189, 248, 0.4)',
+    platformTrack: 'rgba(56, 189, 248, 0.25)',
+    platformTrackDot: 'rgba(56, 189, 248, 0.75)',
 
-    // Crumbling Platforms
+    // Crumbling Platforms (Shiny Amber / Topaz)
     platformCrumbleTop: '#fb923c',
+    platformCrumbleTopGloss: '#fef08a',
     platformCrumbleBody: '#3b1c10',
-    platformCrumbleBorder: '#ea580c',
+    platformCrumbleBodyDark: '#200c05',
+    platformCrumbleBorder: '#f97316',
+    platformCrumbleGlow: 'rgba(249, 115, 22, 0.4)',
     platformCrumbleCrack: '#fed7aa',
 
-    // Moving & Crumbling (Hybrid) Platforms
+    // Moving & Crumbling (Shiny Amethyst / Gem)
     platformHybridTop: '#e879f9',
+    platformHybridTopGloss: '#fdf4ff',
     platformHybridBody: '#3b0764',
+    platformHybridBodyDark: '#21023a',
     platformHybridBorder: '#c026d3',
-    platformHybridTrack: 'rgba(232, 121, 249, 0.22)',
-    platformHybridTrackDot: 'rgba(232, 121, 249, 0.65)',
+    platformHybridGlow: 'rgba(232, 121, 249, 0.45)',
+    platformHybridTrack: 'rgba(232, 121, 249, 0.25)',
+    platformHybridTrackDot: 'rgba(232, 121, 249, 0.75)',
 
     // Player & Particles
     playerBody: '#38bdf8',
@@ -239,19 +252,19 @@ class ParticleSystem {
   }
 
   emitBreak(centerX, centerY, width) {
-    // Burst of debris when crumbling platform falls
-    for (let i = 0; i < 16; i++) {
+    // Burst of shiny debris when crumbling platform falls
+    for (let i = 0; i < 18; i++) {
       const px = centerX - width / 2 + Math.random() * width;
       this.emit(px, centerY, 1, {
-        color: ['#fb923c', '#ea580c', '#c2410c', '#fdba74'][Math.floor(Math.random() * 4)],
+        color: ['#fb923c', '#ea580c', '#fef08a', '#fdba74', '#ffffff'][Math.floor(Math.random() * 5)],
         sizeMin: 3,
         sizeMax: 7,
         speedMin: 40,
-        speedMax: 180,
+        speedMax: 190,
         angleMin: 0,
         angleMax: Math.PI * 2,
         lifeMin: 0.4,
-        lifeMax: 0.8,
+        lifeMax: 0.85,
         gravity: 600,
       });
     }
@@ -259,16 +272,16 @@ class ParticleSystem {
 
   emitRespawnGlow(centerX, centerY, width) {
     // Magical sparkle when platform re-materializes
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const px = centerX - width / 2 + Math.random() * width;
       this.emit(px, centerY + 8, 1, {
-        color: ['#67e8f9', '#a5f3fc', '#e879f9', '#ffffff'][Math.floor(Math.random() * 4)],
+        color: ['#67e8f9', '#a5f3fc', '#e879f9', '#fdf4ff', '#ffffff'][Math.floor(Math.random() * 5)],
         sizeMin: 2,
         sizeMax: 5,
         speedMin: 20,
-        speedMax: 80,
-        angleMin: -Math.PI * 0.8,
-        angleMax: -Math.PI * 0.2,
+        speedMax: 85,
+        angleMin: -Math.PI * 0.85,
+        angleMax: -Math.PI * 0.15,
         lifeMin: 0.4,
         lifeMax: 0.9,
         gravity: -100, // Float upwards
@@ -319,21 +332,21 @@ class Platform {
     this.height = config.height || 26;
     this.label = config.label || '';
 
-    // Motion parameters (for 'moving' and 'moving_crumbling')
+    // Motion parameters (supports prominent multi-block horizontal & vertical oscillation)
     this.oscX = config.oscX || 0;       // Horizontal oscillation distance (+/- px from startX)
     this.oscY = config.oscY || 0;       // Vertical oscillation distance (+/- px from startY)
-    this.speedX = config.speedX || 1.2; // Frequency multiplier
-    this.speedY = config.speedY || 1.2;
+    this.speedX = config.speedX || 1.3; // Frequency multiplier
+    this.speedY = config.speedY || 1.3;
     this.phaseX = config.phaseX || 0;
     this.phaseY = config.phaseY || 0;
-    this.motionTimer = 0;
+    this.motionTimer = Math.random() * 5.0; // Desynchronize visual shimmer
 
     // Crumble parameters (for 'crumbling' and 'moving_crumbling')
     this.crumbleDuration = config.crumbleDuration || 0.75; // Seconds shaking before falling
     this.respawnDelay = config.respawnDelay || 2.8;        // Seconds after falling before respawn
     this.fallSpeed = 0;
     this.fallGravity = config.fallGravity || 1200;
-    this.shakeIntensity = config.shakeIntensity || 3.0;
+    this.shakeIntensity = config.shakeIntensity || 3.2;
 
     // State machine: 'idle' | 'shaking' | 'falling' | 'respawning'
     this.state = 'idle';
@@ -354,7 +367,7 @@ class Platform {
   }
 
   isOscillating() {
-    return this.type === 'moving' || this.type === 'moving_crumbling';
+    return this.oscX !== 0 || this.oscY !== 0 || this.type === 'moving' || this.type === 'moving_crumbling';
   }
 
   isCrumbling() {
@@ -393,12 +406,12 @@ class Platform {
     this.prevY = this.y;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
+    this.motionTimer += dt;
 
     // -------------------------------------------------------------------------
-    // 1. Oscillation Motion Update
+    // 1. Multi-Block Oscillation Motion Update
     // -------------------------------------------------------------------------
     if (this.isOscillating() && (this.state === 'idle' || this.state === 'shaking')) {
-      this.motionTimer += dt;
       let targetX = this.startX;
       let targetY = this.startY;
 
@@ -432,7 +445,7 @@ class Platform {
           this.shakeOffsetY = (Math.random() * 2 - 1) * currentShake * 0.6;
 
           // Emit small crumble debris puffs periodically while shaking
-          if (particleSystem && Math.random() < 0.3) {
+          if (particleSystem && Math.random() < 0.35) {
             const rx = this.x + Math.random() * this.width;
             particleSystem.emit(rx, this.y + this.height, 1, {
               color: '#ea580c',
@@ -551,11 +564,11 @@ class Platform {
       ctx.lineTo(rightX, trackY);
       ctx.stroke();
 
-      // Track endpoint stops
+      // Track endpoint stops (Glowing nodes)
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.arc(leftX, trackY, 4, 0, Math.PI * 2);
-      ctx.arc(rightX, trackY, 4, 0, Math.PI * 2);
+      ctx.arc(leftX, trackY, 4.5, 0, Math.PI * 2);
+      ctx.arc(rightX, trackY, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -571,11 +584,11 @@ class Platform {
       ctx.lineTo(trackX, botY);
       ctx.stroke();
 
-      // Track endpoint stops
+      // Track endpoint stops (Glowing nodes)
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.arc(trackX, topY, 4, 0, Math.PI * 2);
-      ctx.arc(trackX, botY, 4, 0, Math.PI * 2);
+      ctx.arc(trackX, topY, 4.5, 0, Math.PI * 2);
+      ctx.arc(trackX, botY, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -593,25 +606,51 @@ class Platform {
 
     // Color palette selection
     let bodyColor = CONFIG.colors.platformBody;
+    let bodyDark = CONFIG.colors.platformBodyDark;
     let borderColor = CONFIG.colors.platformBorder;
     let topColor = CONFIG.colors.platformTop;
+    let topGlossColor = CONFIG.colors.platformTopGloss;
+    let glowColor = CONFIG.colors.platformGlow;
 
     if (this.type === 'moving') {
       bodyColor = CONFIG.colors.platformMovingBody;
+      bodyDark = CONFIG.colors.platformMovingBodyDark;
       borderColor = CONFIG.colors.platformMovingBorder;
       topColor = CONFIG.colors.platformMovingTop;
+      topGlossColor = CONFIG.colors.platformMovingTopGloss;
+      glowColor = CONFIG.colors.platformMovingGlow;
     } else if (this.type === 'crumbling') {
       bodyColor = CONFIG.colors.platformCrumbleBody;
+      bodyDark = CONFIG.colors.platformCrumbleBodyDark;
       borderColor = CONFIG.colors.platformCrumbleBorder;
       topColor = CONFIG.colors.platformCrumbleTop;
+      topGlossColor = CONFIG.colors.platformCrumbleTopGloss;
+      glowColor = CONFIG.colors.platformCrumbleGlow;
     } else if (this.type === 'moving_crumbling') {
       bodyColor = CONFIG.colors.platformHybridBody;
+      bodyDark = CONFIG.colors.platformHybridBodyDark;
       borderColor = CONFIG.colors.platformHybridBorder;
       topColor = CONFIG.colors.platformHybridTop;
+      topGlossColor = CONFIG.colors.platformHybridTopGloss;
+      glowColor = CONFIG.colors.platformHybridGlow;
     }
 
-    // 1. Main Platform Body
-    ctx.fillStyle = bodyColor;
+    // -------------------------------------------------------------------------
+    // 1. Shiny Outer Glow
+    // -------------------------------------------------------------------------
+    if (this.isOscillating() || this.type === 'moving_crumbling') {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 10;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Shiny Metallic / Crystal Body Gradient
+    // -------------------------------------------------------------------------
+    const bodyGradient = ctx.createLinearGradient(drawX, drawY, drawX, drawY + this.height);
+    bodyGradient.addColorStop(0, bodyColor);
+    bodyGradient.addColorStop(1, bodyDark);
+
+    ctx.fillStyle = bodyGradient;
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = 2;
 
@@ -620,25 +659,72 @@ class Platform {
     ctx.fill();
     ctx.stroke();
 
-    // 2. Moving Platform Visual Accents (Chevrons / Core lights)
+    // Reset shadow for internal accents
+    ctx.shadowBlur = 0;
+
+    // -------------------------------------------------------------------------
+    // 3. Specular Shimmer / Shiny Light Sheen Sweep Across Platform
+    // -------------------------------------------------------------------------
+    ctx.save();
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, drawX, drawY, this.width, this.height, 6);
+    ctx.clip();
+
+    // Shimmer travels diagonally across the platform periodically
+    const shimmerSpeed = 130;
+    const shimmerPeriod = this.width + 160;
+    const shimmerX = drawX - 60 + ((this.motionTimer * shimmerSpeed) % shimmerPeriod);
+
+    const shimmerGrad = ctx.createLinearGradient(shimmerX - 35, drawY, shimmerX + 35, drawY + this.height);
+    shimmerGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    shimmerGrad.addColorStop(0.45, 'rgba(255, 255, 255, 0.42)');
+    shimmerGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0.65)');
+    shimmerGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+    ctx.fillStyle = shimmerGrad;
+    ctx.fillRect(drawX - 20, drawY, this.width + 40, this.height);
+    ctx.restore();
+
+    // -------------------------------------------------------------------------
+    // 4. Moving Platform Accents (Chevrons & Shiny Core)
+    // -------------------------------------------------------------------------
     if (this.isOscillating()) {
       this.drawMovingAccents(ctx, drawX, drawY, topColor);
     }
 
-    // 3. Crumble Visual Accents (Fractures & Danger Warnings)
+    // -------------------------------------------------------------------------
+    // 5. Crumble Accents (Fractures & Danger Warnings)
+    // -------------------------------------------------------------------------
     if (this.isCrumbling()) {
       this.drawCrumbleAccents(ctx, drawX, drawY);
     }
 
-    // 4. Bright Top Highlight Lip
-    ctx.fillStyle = topColor;
+    // -------------------------------------------------------------------------
+    // 6. Glossy Top Highlight Lip with Specular Glass Glint
+    // -------------------------------------------------------------------------
+    const topGradient = ctx.createLinearGradient(drawX, drawY + 1, drawX, drawY + 7);
+    topGradient.addColorStop(0, topGlossColor);
+    topGradient.addColorStop(1, topColor);
+
+    ctx.fillStyle = topGradient;
     ctx.beginPath();
     this.drawRoundedRect(ctx, drawX + 2, drawY + 1, this.width - 4, 6, 3);
     ctx.fill();
 
-    // 5. Label
+    // Thin specular white glint strip
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.fillRect(drawX + 6, drawY + 1.5, this.width - 12, 1.2);
+
+    // -------------------------------------------------------------------------
+    // 7. Twinkling Shiny Corner Star Sparkles
+    // -------------------------------------------------------------------------
+    this.drawSparkles(ctx, drawX, drawY, topGlossColor);
+
+    // -------------------------------------------------------------------------
+    // 8. Label
+    // -------------------------------------------------------------------------
     if (this.label) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(this.label, drawX + this.width / 2, drawY + this.height - 8);
@@ -647,10 +733,57 @@ class Platform {
     ctx.restore();
   }
 
+  drawSparkles(ctx, drawX, drawY, color) {
+    ctx.save();
+    // Twinkle pulse 1 (left side)
+    const t1 = (Math.sin(this.motionTimer * 4.0) + 1) / 2;
+    if (t1 > 0.6) {
+      const sparkleAlpha = (t1 - 0.6) / 0.4;
+      const size = 3 + sparkleAlpha * 3;
+      this.renderStarSparkle(ctx, drawX + 10, drawY + 3, size, sparkleAlpha, color);
+    }
+
+    // Twinkle pulse 2 (right side)
+    const t2 = (Math.sin(this.motionTimer * 3.5 + 2.5) + 1) / 2;
+    if (t2 > 0.65) {
+      const sparkleAlpha = (t2 - 0.65) / 0.35;
+      const size = 3 + sparkleAlpha * 3.5;
+      this.renderStarSparkle(ctx, drawX + this.width - 12, drawY + 3, size, sparkleAlpha, color);
+    }
+    ctx.restore();
+  }
+
+  renderStarSparkle(ctx, cx, cy, size, alpha, color) {
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = alpha;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size);
+    ctx.quadraticCurveTo(cx, cy, cx + size, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy + size);
+    ctx.quadraticCurveTo(cx, cy, cx - size, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy - size);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Central bright point
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   drawMovingAccents(ctx, drawX, drawY, color) {
     ctx.save();
     ctx.fillStyle = color;
-    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.65;
 
     const centerY = drawY + this.height / 2 + 1;
     const centerX = drawX + this.width / 2;
@@ -658,6 +791,7 @@ class Platform {
     if (this.oscX !== 0) {
       // Horizontal arrows / chevrons
       const arrowSize = 4;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       // Left chevron
       ctx.moveTo(centerX - 16, centerY - arrowSize);
@@ -673,6 +807,7 @@ class Platform {
     if (this.oscY !== 0) {
       // Vertical chevrons
       const arrowSize = 4;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       // Up chevron
       ctx.moveTo(centerX - arrowSize, centerY - 6);
@@ -685,9 +820,9 @@ class Platform {
       ctx.stroke();
     }
 
-    // Center Energy Core Pip
+    // Center Energy Core Pip with glowing ring
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 2.5, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -696,7 +831,7 @@ class Platform {
   drawCrumbleAccents(ctx, drawX, drawY) {
     ctx.save();
     const isShaking = this.state === 'shaking';
-    ctx.strokeStyle = isShaking ? '#fed7aa' : 'rgba(254, 215, 170, 0.4)';
+    ctx.strokeStyle = isShaking ? '#fef08a' : 'rgba(254, 215, 170, 0.45)';
     ctx.lineWidth = isShaking ? 2 : 1;
 
     // Draw jagged fracture lines
@@ -710,7 +845,7 @@ class Platform {
 
     // Danger pulse overlay when shaking
     if (isShaking) {
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
       this.drawRoundedRect(ctx, drawX, drawY, this.width, this.height, 6);
       ctx.fill();
     }
@@ -1152,38 +1287,42 @@ class Camera {
 }
 
 // =============================================================================
-// 7. WORLD & SCENE PLATFORMS
+// 7. WORLD & SCENE PLATFORMS (MULTI-BLOCK HORIZONTAL MOVEMENT + SHINY HUBS)
 // =============================================================================
 class World {
   constructor() {
     this.platforms = [
       // -----------------------------------------------------------------------
-      // Zone 1: Spawn & Introduction to Moving Platforms
+      // Zone 1: Spawn & Introduction to Multi-Block Moving Platforms
       // -----------------------------------------------------------------------
       new Platform({ x: 40, y: 340, width: 340, height: 40, label: 'Spawn Ground' }),
-      new Platform({ x: 490, y: 320, width: 130, height: 26, type: 'moving', oscX: 95, speedX: 1.6, label: 'Moving ↔' }),
-      new Platform({ x: 710, y: 300, width: 150, height: 28, label: 'Mid Island' }),
+      // Moves horizontally across several blocks (oscX: 130px)
+      new Platform({ x: 530, y: 320, width: 130, height: 26, type: 'moving', oscX: 130, speedX: 1.5, label: 'Moving ↔' }),
+      new Platform({ x: 790, y: 300, width: 150, height: 28, label: 'Mid Island' }),
 
       // -----------------------------------------------------------------------
-      // Zone 2: Crumbling Stepping Stones Across Pit
+      // Zone 2: Oscillating & Crumbling Stepping Stones Across Pit
       // -----------------------------------------------------------------------
-      new Platform({ x: 920, y: 280, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1070, y: 250, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1220, y: 220, width: 95, height: 24, type: 'crumbling', crumbleDuration: 0.75, label: 'Crumble' }),
-      new Platform({ x: 1370, y: 200, width: 160, height: 30, label: 'Checkpoint' }),
+      // Crumbling platforms that also move horizontally a few blocks!
+      new Platform({ x: 1010, y: 280, width: 95, height: 24, type: 'crumbling', oscX: 65, speedX: 1.8, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1190, y: 240, width: 95, height: 24, type: 'crumbling', oscX: 70, speedX: 2.1, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1370, y: 200, width: 95, height: 24, type: 'crumbling', oscX: 60, speedX: 1.9, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1540, y: 180, width: 160, height: 30, label: 'Checkpoint' }),
 
       // -----------------------------------------------------------------------
-      // Zone 3: Vertical Elevator & Sky Summit
+      // Zone 3: Vertical & Horizontal Swaying Elevator (Multi-Block Travel)
       // -----------------------------------------------------------------------
-      new Platform({ x: 1600, y: 140, width: 120, height: 24, type: 'moving', oscY: 130, speedY: 1.4, label: 'Elevator ↕' }),
-      new Platform({ x: 1790, y: -20, width: 240, height: 34, label: 'Sky Summit' }),
+      // Moves 140px vertically AND 80px horizontally (2D motion!)
+      new Platform({ x: 1790, y: 130, width: 120, height: 24, type: 'moving', oscX: 80, oscY: 135, speedX: 1.3, speedY: 1.3, label: 'Elevator ⤢' }),
+      new Platform({ x: 1980, y: -20, width: 240, height: 34, label: 'Sky Summit' }),
 
       // -----------------------------------------------------------------------
-      // Zone 4: The Gauntlet: Oscillating & Crumbling (Hybrid) Platforms!
+      // Zone 4: The Gauntlet: Multi-Block Oscillating & Crumbling (Hybrid) Platforms!
       // -----------------------------------------------------------------------
-      new Platform({ x: 1540, y: -40, width: 110, height: 22, type: 'moving_crumbling', oscX: 75, speedX: 2.0, label: 'Osc & Fall ⚡' }),
-      new Platform({ x: 1290, y: -60, width: 105, height: 22, type: 'moving_crumbling', oscY: 60, speedY: 1.8, label: 'Osc & Fall ⚡' }),
-      new Platform({ x: 1040, y: -80, width: 110, height: 22, type: 'moving_crumbling', oscX: 80, speedX: 2.2, label: 'Osc & Fall ⚡' }),
+      // Hybrid platforms oscillating 120-150px horizontally across several blocks
+      new Platform({ x: 1680, y: -40, width: 110, height: 22, type: 'moving_crumbling', oscX: 125, speedX: 2.0, label: 'Osc & Fall ⚡' }),
+      new Platform({ x: 1360, y: -60, width: 110, height: 22, type: 'moving_crumbling', oscX: 130, oscY: 50, speedX: 1.8, speedY: 1.4, label: 'Osc & Fall ⚡' }),
+      new Platform({ x: 1040, y: -80, width: 110, height: 22, type: 'moving_crumbling', oscX: 140, speedX: 2.2, label: 'Osc & Fall ⚡' }),
 
       // -----------------------------------------------------------------------
       // Zone 5: Grand Peak / Trophy Vantage
@@ -1193,16 +1332,16 @@ class World {
       // -----------------------------------------------------------------------
       // Zone 6: Descending Upper Route Back to Spawn
       // -----------------------------------------------------------------------
-      new Platform({ x: 470, y: -10, width: 100, height: 24, type: 'crumbling', label: 'Crumble' }),
-      new Platform({ x: 300, y: 70, width: 110, height: 24, type: 'moving', oscX: 55, speedX: 1.5, label: 'Moving ↔' }),
-      new Platform({ x: 140, y: 170, width: 130, height: 26, label: 'High Overlook' }),
+      new Platform({ x: 470, y: -10, width: 100, height: 24, type: 'crumbling', oscX: 55, speedX: 1.6, label: 'Crumble ↔' }),
+      new Platform({ x: 290, y: 70, width: 110, height: 24, type: 'moving', oscX: 110, speedX: 1.6, label: 'Moving ↔' }),
+      new Platform({ x: 120, y: 170, width: 130, height: 26, label: 'High Overlook' }),
 
       // -----------------------------------------------------------------------
-      // Zone 7: Lower Speed Runway Route
+      // Zone 7: Lower Fast Runway Route
       // -----------------------------------------------------------------------
       new Platform({ x: 1430, y: 380, width: 180, height: 34, label: 'Lower Path' }),
-      new Platform({ x: 1690, y: 360, width: 120, height: 24, type: 'moving_crumbling', oscX: 85, speedX: 2.4, label: 'Danger ⚡' }),
-      new Platform({ x: 1960, y: 320, width: 280, height: 38, label: 'Far Runway' }),
+      new Platform({ x: 1720, y: 360, width: 120, height: 24, type: 'moving_crumbling', oscX: 140, speedX: 2.4, label: 'Danger ⚡' }),
+      new Platform({ x: 2020, y: 320, width: 280, height: 38, label: 'Far Runway' }),
     ];
   }
 
@@ -1446,4 +1585,5 @@ class Game {
 window.addEventListener('DOMContentLoaded', () => {
   new Game();
 });
+
 
