@@ -53,7 +53,7 @@ body {
   align-items: center;
 }
 
-.title-badge, .stats-badge {
+.title-badge, .stats-badge, .score-badge {
   background: rgba(14, 17, 23, 0.75);
   backdrop-filter: blur(8px);
   padding: 6px 14px;
@@ -63,6 +63,31 @@ body {
   letter-spacing: 0.5px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #c9d1d9;
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.score-badge {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.35);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.15);
+}
+
+.score-badge.pop {
+  animation: scorePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes scorePop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+    border-color: rgba(251, 191, 36, 0.8);
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .bottom-bar {
