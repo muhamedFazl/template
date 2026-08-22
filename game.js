@@ -50,6 +50,9 @@ const CONFIG = {
     playerHatBand: '#fbbf24',
     playerHatBrim: '#e11d48',
     particle: '#38bdf8',
+    checkpointActive: '#10b981',
+    checkpointInactive: '#ef4444',
+    checkpointGlow: 'rgba(16, 185, 129, 0.4)',
   }
 };
 
@@ -188,6 +191,42 @@ class ParticleSystem {
       lifeMin: 0.4,
       lifeMax: 0.8,
       gravity: -60, // Float upward
+    });
+  }
+
+  emitCheckpointSparkles(x, y) {
+    const sparkleColors = ['#10b981', '#34d399', '#6ee7b7', '#fbbf24', '#fde047', '#38bdf8', '#ffffff'];
+    for (let i = 0; i < 36; i++) {
+      const color = sparkleColors[Math.floor(Math.random() * sparkleColors.length)];
+      this.emit(x, y, 1, {
+        color,
+        sizeMin: 3,
+        sizeMax: 7,
+        speedMin: 60,
+        speedMax: 260,
+        lifeMin: 0.5,
+        lifeMax: 1.1,
+        angleMin: -Math.PI * 0.95,
+        angleMax: -Math.PI * 0.05,
+        gravity: 80,
+      });
+    }
+  }
+
+  emitCheckpointAmbient(x, y) {
+    const colors = ['#10b981', '#fbbf24', '#6ee7b7', '#fde047'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    this.emit(x + (Math.random() * 24 - 12), y, 1, {
+      color,
+      sizeMin: 2,
+      sizeMax: 4.5,
+      speedMin: 15,
+      speedMax: 45,
+      lifeMin: 0.6,
+      lifeMax: 1.2,
+      angleMin: -Math.PI * 0.75,
+      angleMax: -Math.PI * 0.25,
+      gravity: -35, // Float gently upward
     });
   }
 
@@ -612,7 +651,321 @@ class Camera {
 }
 
 // =============================================================================
-// 6. WORLD & SCENE PLATFORMS
+// 6. CHECKPOINT SYSTEM
+// =============================================================================
+class Checkpoint {
+  constructor(x, y, label, isDefault = false) {
+    // (x, y) is the base anchor point on top of the platform
+    this.x = x;
+    this.y = y;
+    this.label = label || 'Checkpoint';
+    this.isDefault = isDefault;
+    this.isActive = isDefault;
+    this.poleHeight = 68;
+    this.flagWidth = 36;
+    this.flagHeight = 22;
+
+    // Trigger hitbox dimensions
+    this.width = 46;
+    this.height = this.poleHeight + 12;
+
+    // Animation & juice state
+    this.waveTimer = Math.random() * 10;
+    this.flagRaiseProgress = isDefault ? 1.0 : 0.0;
+    this.glowTimer = Math.random() * Math.PI * 2;
+    this.ambientTimer = 0;
+
+    // Respawn position for player (player is width 30, height 42)
+    this.spawnPoint = {
+      x: this.x - 15,
+      y: this.y - 42,
+    };
+  }
+
+  get triggerBounds() {
+    return {
+      x: this.x - this.width / 2,
+      y: this.y - this.height,
+      width: this.width,
+      height: this.height,
+    };
+  }
+
+  checkCollision(player) {
+    const bounds = this.triggerBounds;
+    return (
+      player.x < bounds.x + bounds.width &&
+      player.x + player.width > bounds.x &&
+      player.y < bounds.y + bounds.height &&
+      player.y + player.height > bounds.y
+    );
+  }
+
+  activate(particleSystem) {
+    if (!this.isActive) {
+      this.isActive = true;
+      if (particleSystem) {
+        particleSystem.emitCheckpointSparkles(this.x + 16, this.y - this.poleHeight + 15);
+      }
+    }
+  }
+
+  deactivate() {
+    this.isActive = false;
+  }
+
+  update(dt, player, particleSystem) {
+    this.waveTimer += dt * 4.5;
+    this.glowTimer += dt * 3.0;
+
+    if (this.isActive) {
+      // Smoothly raise flag to the top of the mast
+      if (this.flagRaiseProgress < 1.0) {
+        this.flagRaiseProgress = Math.min(1.0, this.flagRaiseProgress + dt * 2.4);
+      }
+
+      // Periodic ambient sparkle from active flag
+      this.ambientTimer += dt;
+      if (this.ambientTimer > 0.25) {
+        this.ambientTimer = 0;
+        if (Math.random() < 0.65 && particleSystem) {
+          particleSystem.emitCheckpointAmbient(this.x + 8, this.y - this.poleHeight + 8);
+        }
+      }
+    } else {
+      // Resting position near bottom of pole if inactive
+      if (this.flagRaiseProgress > 0.15) {
+        this.flagRaiseProgress = Math.max(0.15, this.flagRaiseProgress - dt * 1.5);
+      }
+    }
+
+    // Check collision with player
+    if (!this.isActive && this.checkCollision(player)) {
+      this.activate(particleSystem);
+      return true; // Newly activated
+    }
+
+    return false;
+  }
+
+  draw(ctx, player) {
+    ctx.save();
+
+    const isNear = player && Math.hypot(player.centerX - this.x, player.centerY - (this.y - 30)) < 160;
+    const pulse = Math.sin(this.glowTimer) * 0.5 + 0.5;
+
+    // 1. Ground Light Aura & Pedestal Shadow
+    ctx.beginPath();
+    ctx.ellipse(this.x, this.y, 22, 6, 0, 0, Math.PI * 2);
+    if (this.isActive) {
+      ctx.fillStyle = `rgba(16, 185, 129, ${0.25 + pulse * 0.2})`;
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 14 + pulse * 8;
+    } else {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 0;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 2. Pedestal Base
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, this.x - 14, this.y - 7, 28, 7, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Base glowing power core
+    ctx.fillStyle = this.isActive ? '#10b981' : '#ef4444';
+    if (this.isActive) {
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 8;
+    }
+    ctx.beginPath();
+    ctx.arc(this.x, this.y - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 3. Flag Pole
+    const poleTopY = this.y - this.poleHeight;
+    const poleGradient = ctx.createLinearGradient(this.x - 2, 0, this.x + 2, 0);
+    poleGradient.addColorStop(0, '#cbd5e1');
+    poleGradient.addColorStop(0.5, '#f8fafc');
+    poleGradient.addColorStop(1, '#64748b');
+
+    ctx.fillStyle = poleGradient;
+    ctx.fillRect(this.x - 2, poleTopY, 4, this.poleHeight - 5);
+
+    // Pole decorative brass rings
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(this.x - 3, poleTopY + 8, 6, 2);
+    ctx.fillRect(this.x - 3, this.y - 12, 6, 2);
+
+    // 4. Pole Top Finial (Glowing Golden Finial Orb)
+    ctx.fillStyle = this.isActive ? '#fde047' : '#94a3b8';
+    if (this.isActive) {
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 14 + pulse * 6;
+    }
+    ctx.beginPath();
+    ctx.arc(this.x, poleTopY - 2, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Finial shine highlight
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(this.x - 1.5, poleTopY - 3.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. Procedural Animated Waving Cloth Flag
+    const minFlagY = this.y - 28;
+    const maxFlagY = poleTopY + 4;
+    const currentFlagY = minFlagY + (maxFlagY - minFlagY) * this.flagRaiseProgress;
+
+    const flagH = this.flagHeight;
+    const flagW = this.flagWidth;
+
+    ctx.save();
+    ctx.translate(this.x + 2, currentFlagY);
+
+    const segments = 6;
+    const segWidth = flagW / segments;
+    const topPoints = [];
+    const bottomPoints = [];
+
+    for (let i = 0; i <= segments; i++) {
+      const segX = i * segWidth;
+      const waveFactor = i / segments;
+      const wave = Math.sin(this.waveTimer + i * 0.9) * (4.5 * waveFactor);
+      const waveYOffset = Math.cos(this.waveTimer * 0.8 + i * 0.6) * (1.5 * waveFactor);
+
+      topPoints.push({ x: segX, y: wave + waveYOffset });
+      const taper = i === segments ? flagH * 0.15 : 0;
+      bottomPoints.push({ x: segX, y: flagH - taper + wave * 0.85 + waveYOffset });
+    }
+
+    // Flag Gradient
+    const flagGradient = ctx.createLinearGradient(0, 0, flagW, flagH);
+    if (this.isActive) {
+      flagGradient.addColorStop(0, '#059669');
+      flagGradient.addColorStop(0.5, '#10b981');
+      flagGradient.addColorStop(1, '#34d399');
+      ctx.shadowColor = 'rgba(16, 185, 129, 0.65)';
+      ctx.shadowBlur = 12;
+    } else {
+      flagGradient.addColorStop(0, '#be123c');
+      flagGradient.addColorStop(0.6, '#e11d48');
+      flagGradient.addColorStop(1, '#f43f5e');
+      ctx.shadowBlur = 0;
+    }
+
+    // Draw Cloth Polygon
+    ctx.beginPath();
+    ctx.moveTo(topPoints[0].x, topPoints[0].y);
+    for (let i = 1; i <= segments; i++) {
+      const prev = topPoints[i - 1];
+      const curr = topPoints[i];
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    }
+    ctx.lineTo(topPoints[segments].x, topPoints[segments].y);
+
+    // End swallowtail pennant notch
+    ctx.lineTo(flagW - 6, (topPoints[segments].y + bottomPoints[segments].y) / 2);
+
+    ctx.lineTo(bottomPoints[segments].x, bottomPoints[segments].y);
+    for (let i = segments - 1; i >= 0; i--) {
+      const prev = bottomPoints[i + 1];
+      const curr = bottomPoints[i];
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = flagGradient;
+    ctx.fill();
+
+    // Flag border trim
+    ctx.strokeStyle = this.isActive ? '#fbbf24' : '#fda4af';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Emblem in middle of flag
+    const emblemWave = Math.sin(this.waveTimer + 1.2) * 2;
+    const emblemX = flagW * 0.42;
+    const emblemY = flagH * 0.5 + emblemWave;
+
+    ctx.fillStyle = this.isActive ? '#fef08a' : '#ffe4e6';
+    ctx.beginPath();
+    if (this.isActive) {
+      // Golden Star / Diamond Emblem
+      ctx.moveTo(emblemX, emblemY - 5);
+      ctx.lineTo(emblemX + 4, emblemY);
+      ctx.lineTo(emblemX, emblemY + 5);
+      ctx.lineTo(emblemX - 4, emblemY);
+      ctx.closePath();
+    } else {
+      // Inactive Circle Emblem
+      ctx.arc(emblemX, emblemY, 3.5, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    ctx.restore();
+
+    // 6. Floating Label & Checkpoint Status Badge
+    if (this.isActive || isNear) {
+      const labelY = poleTopY - 18;
+      ctx.save();
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+
+      const tagText = this.isActive ? `🚩 ${this.label}` : this.label;
+      const metrics = ctx.measureText(tagText);
+      const bgW = metrics.width + 16;
+      const bgH = 20;
+
+      // Label background pill
+      ctx.fillStyle = this.isActive ? 'rgba(6, 78, 59, 0.9)' : 'rgba(15, 23, 42, 0.85)';
+      ctx.strokeStyle = this.isActive ? '#34d399' : 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, this.x - bgW / 2, labelY - bgH / 2, bgW, bgH, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Label text
+      ctx.fillStyle = this.isActive ? '#a7f3d0' : '#e2e8f0';
+      ctx.fillText(tagText, this.x, labelY + 4);
+
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+}
+
+// =============================================================================
+// 7. WORLD & SCENE PLATFORMS
 // =============================================================================
 class World {
   constructor() {
@@ -641,9 +994,36 @@ class World {
       { x: 500, y: 80, width: 100, height: 24 },
       { x: 280, y: 140, width: 120, height: 24 },
     ];
+
+    // Prominent Checkpoints placed on diverse platforms across the map
+    this.checkpoints = [
+      new Checkpoint(160, 340, 'Base Camp', true),
+      new Checkpoint(1270, 80, 'Summit Peak', false),
+      new Checkpoint(1530, 380, 'Sunken Outpost', false),
+      new Checkpoint(2110, 240, 'Sky Runway', false),
+      new Checkpoint(340, 140, 'High Haven', false),
+    ];
   }
 
-  draw(ctx) {
+  update(dt, player, particleSystem, onCheckpointActivated) {
+    for (const cp of this.checkpoints) {
+      const activated = cp.update(dt, player, particleSystem);
+      if (activated) {
+        // Deactivate all other checkpoints so only current one is active
+        for (const other of this.checkpoints) {
+          if (other !== cp) {
+            other.deactivate();
+          }
+        }
+        if (onCheckpointActivated) {
+          onCheckpointActivated(cp);
+        }
+      }
+    }
+  }
+
+  draw(ctx, player) {
+    // Draw Platforms
     for (const plat of this.platforms) {
       // Platform Body
       ctx.fillStyle = CONFIG.colors.platformBody;
@@ -669,6 +1049,11 @@ class World {
         ctx.fillText(plat.label, plat.x + plat.width / 2, plat.y + plat.height - 10);
       }
     }
+
+    // Draw Checkpoint Flags
+    for (const cp of this.checkpoints) {
+      cp.draw(ctx, player);
+    }
   }
 
   drawRoundedRect(ctx, x, y, width, height, radius) {
@@ -687,7 +1072,7 @@ class World {
 }
 
 // =============================================================================
-// 7. GAME ENGINE & LOOP
+// 8. GAME ENGINE & LOOP
 // =============================================================================
 class Game {
   constructor() {
@@ -701,7 +1086,23 @@ class Game {
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
+    // Checkpoint & Respawn state
+    this.currentCheckpoint = this.world.checkpoints.find(c => c.isActive) || this.world.checkpoints[0];
+    this.currentSpawnPoint = this.currentCheckpoint ? { ...this.currentCheckpoint.spawnPoint } : { ...CONFIG.world.spawnPoint };
+
+    // Snap player & camera to initial spawn point
+    this.player.x = this.currentSpawnPoint.x;
+    this.player.y = this.currentSpawnPoint.y;
     this.camera.snapTo(this.player.centerX, this.player.centerY);
+
+    // On-screen Checkpoint activation banner
+    this.checkpointBanner = {
+      active: false,
+      title: '',
+      subtitle: '',
+      timer: 0,
+      maxTime: 2.6,
+    };
 
     this.respawnCount = 0;
     this.debugMode = false;
@@ -711,8 +1112,27 @@ class Game {
     this.fpsTimer = 0;
     this.frameCount = 0;
 
+    this.updateHUD();
+
     // Start Game Loop
     requestAnimationFrame((time) => this.loop(time));
+  }
+
+  showCheckpointBanner(title, subtitle) {
+    this.checkpointBanner = {
+      active: true,
+      title,
+      subtitle,
+      timer: 2.6,
+      maxTime: 2.6,
+    };
+  }
+
+  updateHUD() {
+    if (this.statsDisplay) {
+      const cpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'Base Camp';
+      this.statsDisplay.textContent = `FPS: ${this.fps} | Respawns: ${this.respawnCount} | Checkpoint: ${cpName}`;
+    }
   }
 
   update(dt) {
@@ -724,6 +1144,22 @@ class Game {
     // Manual Respawn trigger
     if (this.input.restartJustPressed) {
       this.triggerRespawn();
+    }
+
+    // Update World & Checkpoints
+    this.world.update(dt, this.player, this.particleSystem, (activatedCheckpoint) => {
+      this.currentCheckpoint = activatedCheckpoint;
+      this.currentSpawnPoint = { ...activatedCheckpoint.spawnPoint };
+      this.showCheckpointBanner('CHECKPOINT REACHED!', activatedCheckpoint.label);
+      this.updateHUD();
+    });
+
+    // Update Checkpoint Banner Animation Timer
+    if (this.checkpointBanner.active) {
+      this.checkpointBanner.timer -= dt;
+      if (this.checkpointBanner.timer <= 0) {
+        this.checkpointBanner.active = false;
+      }
     }
 
     // Update Player & Physics
@@ -744,7 +1180,9 @@ class Game {
 
   triggerRespawn() {
     this.respawnCount++;
-    this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
+    const spawnPos = this.currentSpawnPoint || CONFIG.world.spawnPoint;
+    this.player.respawn(spawnPos, this.particleSystem);
+    this.updateHUD();
   }
 
   render() {
@@ -769,8 +1207,8 @@ class Game {
     // -------------------------------------------------------------------------
     this.camera.apply(ctx);
 
-    // Draw Platforms
-    this.world.draw(ctx);
+    // Draw Platforms & Checkpoints
+    this.world.draw(ctx, this.player);
 
     // Draw Particles
     this.particleSystem.draw(ctx);
@@ -788,9 +1226,69 @@ class Game {
     // -------------------------------------------------------------------------
     // 3. Screen Space UI & HUD
     // -------------------------------------------------------------------------
+    if (this.checkpointBanner.active) {
+      this.drawCheckpointBanner(ctx, w, h);
+    }
+
     if (this.debugMode) {
       this.drawDebugOverlay(ctx);
     }
+  }
+
+  drawCheckpointBanner(ctx, w, h) {
+    const banner = this.checkpointBanner;
+    const elapsed = banner.maxTime - banner.timer;
+    let alpha = 1;
+    let slideY = 0;
+
+    // Entrance bounce / fade-in
+    if (elapsed < 0.3) {
+      const p = elapsed / 0.3;
+      alpha = p;
+      slideY = (1 - p) * -20;
+    } else if (banner.timer < 0.5) {
+      alpha = banner.timer / 0.5;
+      slideY = (1 - alpha) * -12;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+    const bannerW = 340;
+    const bannerH = 56;
+    const bannerX = (w - bannerW) / 2;
+    const bannerY = 48 + slideY;
+
+    // Background pill with emerald glow
+    ctx.shadowColor = 'rgba(16, 185, 129, 0.7)';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = 'rgba(11, 15, 25, 0.94)';
+    ctx.beginPath();
+    this.world.drawRoundedRect(ctx, bannerX, bannerY, bannerW, bannerH, 14);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Banner Icon
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🚩', bannerX + 32, bannerY + 36);
+
+    // Banner Title
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#34d399';
+    ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+    ctx.fillText(banner.title, bannerX + 58, bannerY + 24);
+
+    // Banner Subtitle
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '12px system-ui, -apple-system, sans-serif';
+    ctx.fillText(`Respawn location: ${banner.subtitle}`, bannerX + 58, bannerY + 43);
+
+    ctx.restore();
   }
 
   drawParallaxStars(ctx) {
@@ -831,6 +1329,18 @@ class Game {
     ctx.lineTo(this.player.centerX + this.player.vx * 0.1, this.player.centerY + this.player.vy * 0.1);
     ctx.stroke();
 
+    // Checkpoint Trigger Hitboxes
+    for (const cp of this.world.checkpoints) {
+      const b = cp.triggerBounds;
+      ctx.strokeStyle = cp.isActive ? '#10b981' : '#f59e0b';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(b.x, b.y, b.width, b.height);
+
+      // Spawn marker
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(cp.spawnPoint.x, cp.spawnPoint.y, 4, 4);
+    }
+
     // Death line indicator
     ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
     ctx.setLineDash([8, 8]);
@@ -843,11 +1353,13 @@ class Game {
 
   drawDebugOverlay(ctx) {
     ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 240, 130);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillRect(16, 60, 260, 150);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 240, 130);
+    ctx.strokeRect(16, 60, 260, 150);
+
+    const activeCpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'None';
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '11px monospace';
@@ -856,8 +1368,9 @@ class Game {
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
     ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 160);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 175);
+    ctx.fillText(`Checkpoint: ${activeCpName}`, 26, 160);
+    ctx.fillText(`Spawn Pos: (${Math.round(this.currentSpawnPoint.x)}, ${Math.round(this.currentSpawnPoint.y)})`, 26, 180);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 195);
     ctx.restore();
   }
 
@@ -874,9 +1387,7 @@ class Game {
       this.fps = Math.round((this.frameCount / this.fpsTimer));
       this.frameCount = 0;
       this.fpsTimer = 0;
-      if (this.statsDisplay) {
-        this.statsDisplay.textContent = `FPS: ${this.fps} | Respawns: ${this.respawnCount}`;
-      }
+      this.updateHUD();
     }
 
     this.update(dt);
