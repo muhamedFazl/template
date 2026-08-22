@@ -26,6 +26,10 @@ const CONFIG = {
     jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
     coyoteTime: 0.12,       // Grace period (seconds) to jump after leaving a ledge
     jumpBufferTime: 0.12,   // Window (seconds) to register jump before landing
+    wallSlideSpeed: 110,    // Constant downward slide speed when contacting a wall
+    wallJumpForceY: 540,    // Vertical impulse on wall jump
+    wallJumpForceX: 210,    // Horizontal impulse away from wall on wall jump
+    wallCoyoteTime: 0.10,   // Grace period (seconds) to wall-jump after detaching from wall
   },
   camera: {
     lerpSpeed: 6.0,         // Camera follow tightness
@@ -234,8 +238,16 @@ class Player {
     this.wasGrounded = false;
     this.facing = 1; // 1 = right, -1 = left
 
+    // Wall interaction state
+    this.isTouchingWall = false;
+    this.wallDir = 0; // -1 = left wall, 1 = right wall, 0 = none
+    this.isWallSliding = false;
+    this.lastWallDir = 0;
+    this.wallSlideDustTimer = 0;
+
     // Timers for game feel
     this.coyoteTimer = 0;
+    this.wallCoyoteTimer = 0;
     this.jumpBufferTimer = 0;
 
     // Procedural animation state (squash & stretch)
@@ -251,6 +263,14 @@ class Player {
     this.y = spawnPoint.y;
     this.vx = 0;
     this.vy = 0;
+    this.isTouchingWall = false;
+    this.wallDir = 0;
+    this.isWallSliding = false;
+    this.lastWallDir = 0;
+    this.wallSlideDustTimer = 0;
+    this.coyoteTimer = 0;
+    this.wallCoyoteTimer = 0;
+    this.jumpBufferTimer = 0;
     this.scaleX = 1.4;
     this.scaleY = 0.6;
     if (particleSystem) {
@@ -266,6 +286,37 @@ class Player {
     return this.y + this.height / 2;
   }
 
+  getWallContact(platforms) {
+    const marginY = 4;
+    const probeWidth = 2;
+    const probeHeight = this.height - marginY * 2;
+    if (probeHeight <= 0) return 0;
+
+    const leftProbe = {
+      x: this.x - probeWidth,
+      y: this.y + marginY,
+      width: probeWidth,
+      height: probeHeight,
+    };
+
+    const rightProbe = {
+      x: this.x + this.width,
+      y: this.y + marginY,
+      width: probeWidth,
+      height: probeHeight,
+    };
+
+    for (const plat of platforms) {
+      if (this.checkCollision(leftProbe, plat)) {
+        return -1; // Wall to the left
+      }
+      if (this.checkCollision(rightProbe, plat)) {
+        return 1; // Wall to the right
+      }
+    }
+    return 0;
+  }
+
   update(dt, input, platforms, particleSystem) {
     // -------------------------------------------------------------------------
     // 1. Timers & Input Buffering
@@ -274,6 +325,13 @@ class Player {
       this.coyoteTimer = CONFIG.physics.coyoteTime;
     } else {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+    }
+
+    if (this.isTouchingWall && !this.isGrounded) {
+      this.wallCoyoteTimer = CONFIG.physics.wallCoyoteTime;
+      this.lastWallDir = this.wallDir;
+    } else {
+      this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - dt);
     }
 
     if (input.jumpJustPressed) {
@@ -315,20 +373,42 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 3. Jump Handling (Variable Jump Height + Coyote + Buffer)
+    // 3. Jump Handling (Variable Jump Height + Coyote + Buffer + Wall Jump)
     // -------------------------------------------------------------------------
-    if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
-      // Execute Jump
-      this.vy = -CONFIG.physics.jumpForce;
-      this.jumpBufferTimer = 0;
-      this.coyoteTimer = 0;
-      this.isGrounded = false;
+    if (this.jumpBufferTimer > 0) {
+      if (this.coyoteTimer > 0) {
+        // Standard Ground Jump
+        this.vy = -CONFIG.physics.jumpForce;
+        this.jumpBufferTimer = 0;
+        this.coyoteTimer = 0;
+        this.isGrounded = false;
 
-      // Visual juice: stretch vertically on jump
-      this.scaleX = 0.75;
-      this.scaleY = 1.35;
+        // Visual juice: stretch vertically on jump
+        this.scaleX = 0.75;
+        this.scaleY = 1.35;
 
-      particleSystem.emitDust(this.centerX, this.y + this.height);
+        particleSystem.emitDust(this.centerX, this.y + this.height);
+      } else if (this.wallCoyoteTimer > 0) {
+        // Wall Jump! Jump up and away from the wall
+        const jumpWallDir = this.lastWallDir !== 0 ? this.lastWallDir : this.wallDir;
+        if (jumpWallDir !== 0) {
+          this.vy = -CONFIG.physics.wallJumpForceY;
+          this.vx = -jumpWallDir * CONFIG.physics.wallJumpForceX;
+          this.facing = -jumpWallDir; // Face away from the wall
+          this.jumpBufferTimer = 0;
+          this.wallCoyoteTimer = 0;
+          this.coyoteTimer = 0;
+          this.isGrounded = false;
+          this.isTouchingWall = false;
+
+          // Visual juice
+          this.scaleX = 0.8;
+          this.scaleY = 1.3;
+
+          const dustX = jumpWallDir === -1 ? this.x : this.x + this.width;
+          particleSystem.emitDust(dustX, this.centerY, -jumpWallDir);
+        }
+      }
     }
 
     // Variable jump cut: if player lets go of jump while moving upwards, cut jump short
@@ -337,9 +417,33 @@ class Player {
     }
 
     // -------------------------------------------------------------------------
-    // 4. Gravity & Vertical Movement
+    // 4. Gravity & Vertical Movement with Wall Friction
     // -------------------------------------------------------------------------
     this.vy += CONFIG.physics.gravity * dt;
+
+    // Wall friction / slide: if touching a wall while in air, cap downward speed at constant slide rate
+    if (this.isTouchingWall && !this.isGrounded) {
+      if (this.vy > CONFIG.physics.wallSlideSpeed) {
+        this.vy = CONFIG.physics.wallSlideSpeed;
+      }
+      this.isWallSliding = this.vy > 0;
+
+      // Emit wall slide dust particles
+      if (this.isWallSliding) {
+        this.wallSlideDustTimer += dt;
+        if (this.wallSlideDustTimer >= 0.08) {
+          this.wallSlideDustTimer = 0;
+          const dustX = this.wallDir === -1 ? this.x : this.x + this.width;
+          particleSystem.emitDust(dustX, this.centerY + 10, -this.wallDir);
+        }
+      } else {
+        this.wallSlideDustTimer = 0;
+      }
+    } else {
+      this.isWallSliding = false;
+      this.wallSlideDustTimer = 0;
+    }
+
     if (this.vy > CONFIG.physics.terminalVelocity) {
       this.vy = CONFIG.physics.terminalVelocity;
     }
@@ -385,6 +489,17 @@ class Player {
           this.vy = 0;
         }
       }
+    }
+
+    // Check wall contact after movement & collision resolution
+    const currentWall = this.getWallContact(platforms);
+    if (currentWall !== 0 && !this.isGrounded) {
+      this.isTouchingWall = true;
+      this.wallDir = currentWall;
+      this.lastWallDir = currentWall;
+    } else {
+      this.isTouchingWall = false;
+      this.wallDir = 0;
     }
 
     // -------------------------------------------------------------------------
@@ -620,26 +735,31 @@ class World {
       // 1. Spawn / Main Ground Platform
       { x: 40, y: 340, width: 380, height: 40, label: 'Start Ground' },
 
-      // 2. Stepping stones leading up
-      { x: 480, y: 280, width: 140, height: 26 },
-      { x: 680, y: 220, width: 160, height: 26 },
-      { x: 900, y: 150, width: 180, height: 26 },
+      // 2. Tall single scaling wall/pillar to test single-wall climb
+      { x: 450, y: 100, width: 44, height: 280, label: 'Wall Climb' },
 
-      // 3. High vantage platform
-      { x: 1140, y: 80, width: 260, height: 32, label: 'Peak' },
+      // 3. Wall-Jump Chimney / Shaft (two vertical walls facing each other)
+      { x: 580, y: 80, width: 36, height: 320 },
+      { x: 700, y: 80, width: 36, height: 320, label: 'Wall Shaft' },
+      { x: 580, y: 400, width: 156, height: 30 },
 
-      // 4. Lower gap challenge
-      { x: 1160, y: 320, width: 180, height: 30 },
-      { x: 1420, y: 380, width: 220, height: 36 },
-      { x: 1720, y: 300, width: 160, height: 26 },
+      // 4. Stepping stones leading up to Peak
+      { x: 790, y: 160, width: 140, height: 26 },
+      { x: 980, y: 120, width: 160, height: 26 },
+      { x: 1200, y: 60, width: 240, height: 32, label: 'Peak' },
 
-      // 5. Long return runway
-      { x: 1940, y: 240, width: 340, height: 40, label: 'Runway' },
+      // 5. Lower gap challenge with vertical pillar
+      { x: 1220, y: 320, width: 180, height: 30 },
+      { x: 1470, y: 180, width: 40, height: 240, label: 'Pillar' },
+      { x: 1570, y: 360, width: 200, height: 36 },
+      { x: 1830, y: 280, width: 160, height: 26 },
 
-      // 6. Floating upper islands
-      { x: 740, y: 60, width: 120, height: 24 },
-      { x: 500, y: 80, width: 100, height: 24 },
-      { x: 280, y: 140, width: 120, height: 24 },
+      // 6. Long return runway
+      { x: 2050, y: 220, width: 360, height: 40, label: 'Runway' },
+
+      // 7. Floating upper islands
+      { x: 860, y: 20, width: 110, height: 22 },
+      { x: 330, y: 80, width: 80, height: 22 },
     ];
   }
 
@@ -844,20 +964,21 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 240, 130);
+    ctx.fillRect(16, 60, 260, 150);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 240, 130);
+    ctx.strokeRect(16, 60, 260, 150);
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '11px monospace';
     ctx.fillText(`DEBUG MODE (F3)`, 26, 80);
     ctx.fillStyle = '#f8fafc';
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
-    ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 160);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 175);
+    ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 118);
+    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 136);
+    ctx.fillText(`Wall: ${this.player.isTouchingWall} (dir: ${this.player.wallDir}) | Slide: ${this.player.isWallSliding}`, 26, 154);
+    ctx.fillText(`Wall Coyote: ${this.player.wallCoyoteTimer.toFixed(2)}s`, 26, 172);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 190);
     ctx.restore();
   }
 
