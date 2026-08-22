@@ -992,19 +992,19 @@ class World {
     ];
 
     this.hazards = [
-      // Spike hazard on edge of Start Ground
+      // Spike hazard on edge of Start Ground (top)
       new SpikeHazard(280, 322, 100, 18, 'up', 'Spike Pit'),
 
-      // Spike hazard on stepping stone 2
+      // Spike hazard on stepping stone 2 (top)
       new SpikeHazard(740, 202, 60, 18, 'up'),
 
-      // Ceiling spikes under Peak platform
-      new SpikeHazard(1200, 112, 120, 18, 'down'),
+      // Spike hazard on Peak platform (top)
+      new SpikeHazard(1240, 62, 90, 18, 'up'),
 
-      // Floor spikes in lower gap challenge
+      // Floor spikes in lower gap challenge (top)
       new SpikeHazard(1480, 362, 90, 18, 'up'),
 
-      // Floor spikes guarding the return runway
+      // Floor spikes guarding the return runway (top)
       new SpikeHazard(2040, 222, 80, 18, 'up'),
     ];
   }
@@ -1016,12 +1016,7 @@ class World {
   }
 
   draw(ctx) {
-    // Draw hazards first
-    for (const hazard of this.hazards) {
-      hazard.draw(ctx);
-    }
-
-    // Draw platforms
+    // 1. Draw platforms
     for (const plat of this.platforms) {
       // Platform Body
       ctx.fillStyle = CONFIG.colors.platformBody;
@@ -1046,6 +1041,11 @@ class World {
         ctx.textAlign = 'center';
         ctx.fillText(plat.label, plat.x + plat.width / 2, plat.y + plat.height - 10);
       }
+    }
+
+    // 2. Draw hazards on top of platforms
+    for (const hazard of this.hazards) {
+      hazard.draw(ctx);
     }
   }
 
