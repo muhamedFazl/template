@@ -71,3 +71,23 @@ this.platforms = [
 
 ### 3. Modifying Character & Colors
 Colors for the sky, player, platforms, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
+
+### 4. Adjusting the Lantern & Pink Glow Illumination
+You can tweak the lantern's lighting radius $r$, ambient darkness, and glow colors in `CONFIG.lighting` in [`game.js`](game.js):
+```javascript
+lighting: {
+  enabled: true,
+  ambientDarkness: 0.78, // Darkness level of the environment outside the light (0.0 to 1.0)
+  lantern: {
+    baseRadius: 210,     // Radius r in pixels (currently set to 5x player height: 42px * 5)
+    radiusMultiplier: 5, // Or tweak using character size multiplier
+    flickerAmount: 6.0,  // Natural flame flickering intensity
+    glowColorInner: 'rgba(244, 63, 94, 0.38)',  // Pink illumination wash
+    glowColorMid: 'rgba(236, 72, 153, 0.20)',   // Soft pink ambient aura
+    flameBodyColor: '#db2777',                  // Deep rose-pink flame body
+    flameMidColor: '#ec4899',                   // Hot-pink flame body
+    flameCoreColor: '#f472b6',                  // Vibrant saturated pink flame core
+  }
+}
+```
+
