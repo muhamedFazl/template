@@ -1022,6 +1022,7 @@ class Checkpoint {
     }
 
     ctx.restore();
+    ctx.restore();
   }
 
   drawRoundedRect(ctx, x, y, width, height, radius) {
@@ -1473,6 +1474,10 @@ class Game {
 }
 
 // Initialize when DOM is ready
-window.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => {
+    new Game();
+  });
+} else {
   new Game();
-});
+}
