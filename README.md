@@ -13,7 +13,8 @@ No build tools, npm packages, or bundlers required. Double click `index.html` to
 | **Move Left / Right** | <kbd>A</kbd> / <kbd>D</kbd> or <kbd>←</kbd> / <kbd>→</kbd> |
 | **Jump / Wall Jump** | <kbd>Space</kbd> / <kbd>W</kbd> / <kbd>↑</kbd> |
 | **Wall Slide** | Move into / contact any wall while falling |
-| **Respawn** | <kbd>R</kbd> |
+| **Claim Checkpoint** | <kbd>F</kbd> when standing near a flag |
+| **Respawn / Reset Run** | <kbd>R</kbd> |
 | **Toggle Debug Info** | <kbd>F3</kbd> or <kbd>`</kbd> (Backquote) |
 
 ---
@@ -52,6 +53,7 @@ physics: {
   jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
   coyoteTime: 0.12,       // Grace period after walking off edges
   jumpBufferTime: 0.12,   // Window to press jump before landing
+  bouncePadForce: 950,    // Launch power for springs and bounce pads
   wallSlideSpeed: 110,    // Downward slide speed when in contact with a wall
   wallJumpForceY: 540,    // Vertical jump height from a wall
   wallJumpForceX: 210,    // Outward impulse away from wall
@@ -59,15 +61,19 @@ physics: {
 }
 ```
 
-### 2. Adding / Modifying Platforms
-Find the `World` class in [`game.js`](game.js) to add or move platforms:
+### 2. Adding / Modifying Platforms & Bounce Pads
+Find the `World` class in [`game.js`](game.js) to add or move platforms and bounce pads:
 ```javascript
 this.platforms = [
   { x: 40, y: 340, width: 380, height: 40, label: 'Start' },
   { x: 480, y: 280, width: 140, height: 26 },
-  // Add your own platforms here: { x, y, width, height }
+];
+
+this.bouncePads = [
+  new BouncePad(320, 320, 'spring'), // Mechanical coiled spring
+  new BouncePad(640, 380, 'pad'),    // Futuristic neon bounce pad
 ];
 ```
 
 ### 3. Modifying Character & Colors
-Colors for the sky, player, platforms, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
+Colors for the sky, player, platforms, springs, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
