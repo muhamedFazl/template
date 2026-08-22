@@ -229,6 +229,9 @@ class ParticleSystem {
       lifeMin: 0.2,
       lifeMax: 0.5,
       gravity: 60,
+    });
+  }
+
   emitCheckpointSparkles(x, y) {
     const sparkleColors = ['#10b981', '#34d399', '#6ee7b7', '#fbbf24', '#fde047', '#38bdf8', '#ffffff'];
     for (let i = 0; i < 36; i++) {
@@ -1523,7 +1526,7 @@ class World {
       { x: -280, y: 220, width: 70, height: 22 },
     ];
 
-    // Original level platforms (preserved verbatim to prevent merge conflicts)
+    // Original level platforms
     const originalPlatforms = [
       // 1. Spawn / Main Ground Platform
       { x: 40, y: 340, width: 380, height: 40, label: 'Start Ground' },
@@ -1548,6 +1551,17 @@ class World {
       { x: 740, y: 60, width: 120, height: 24 },
       { x: 500, y: 80, width: 100, height: 24 },
       { x: 280, y: 140, width: 120, height: 24 },
+    ];
+
+    this.platforms = [...wallJumpZone, ...originalPlatforms];
+
+    // Prominent Checkpoints placed on diverse platforms across the map
+    this.checkpoints = [
+      new Checkpoint(160, 340, 'Base Camp', true),
+      new Checkpoint(1270, 80, 'Summit Peak', false),
+      new Checkpoint(1530, 380, 'Sunken Outpost', false),
+      new Checkpoint(2110, 240, 'Sky Runway', false),
+      new Checkpoint(340, 140, 'High Haven', false),
     ];
 
     this.collectibles = this.createCollectibles();
@@ -1595,29 +1609,6 @@ class World {
     this.collectibles = this.createCollectibles();
   }
 
-  update(dt, particleSystem) {
-    for (const c of this.collectibles) {
-      c.update(dt, particleSystem);
-    }
-  }
-
-  draw(ctx) {
-    this.drawPlatforms(ctx);
-    this.drawCollectibles(ctx);
-  }
-
-  drawPlatforms(ctx) {
-    this.platforms = [...wallJumpZone, ...originalPlatforms];
-    // Prominent Checkpoints placed on diverse platforms across the map
-    this.checkpoints = [
-      new Checkpoint(160, 340, 'Base Camp', true),
-      new Checkpoint(1270, 80, 'Summit Peak', false),
-      new Checkpoint(1530, 380, 'Sunken Outpost', false),
-      new Checkpoint(2110, 240, 'Sky Runway', false),
-      new Checkpoint(340, 140, 'High Haven', false),
-    ];
-  }
-
   update(dt, player, particleSystem, input, onCheckpointActivated) {
     for (const cp of this.checkpoints) {
       const activated = cp.update(dt, player, particleSystem, input);
@@ -1633,12 +1624,15 @@ class World {
         }
       }
     }
+
+    for (const c of this.collectibles) {
+      c.update(dt, particleSystem);
+    }
   }
 
   draw(ctx, player) {
-    // Draw Platforms
+    // 1. Draw Platforms
     for (const plat of this.platforms) {
-      // Platform Body
       ctx.fillStyle = CONFIG.colors.platformBody;
       ctx.strokeStyle = CONFIG.colors.platformBorder;
       ctx.lineWidth = 2;
@@ -1648,13 +1642,11 @@ class World {
       ctx.fill();
       ctx.stroke();
 
-      // Bright top edge highlight (Grass/Energy surface)
       ctx.fillStyle = CONFIG.colors.platformTop;
       ctx.beginPath();
       this.drawRoundedRect(ctx, plat.x + 2, plat.y + 1, plat.width - 4, 6, 3);
       ctx.fill();
 
-      // Subtle label on key platforms
       if (plat.label) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.font = '10px sans-serif';
@@ -1663,13 +1655,12 @@ class World {
       }
     }
 
-    // Draw Checkpoint Flags
+    // 2. Draw Checkpoint Flags
     for (const cp of this.checkpoints) {
       cp.draw(ctx, player);
     }
-  }
 
-  drawCollectibles(ctx) {
+    // 3. Draw Collectibles (Coins & Gems)
     for (const c of this.collectibles) {
       c.draw(ctx);
     }
@@ -1720,6 +1711,7 @@ class Game {
     this.collectedCount = 0;
     this.totalCollectibles = this.world.collectibles.length;
     this.updateScoreDisplay();
+
     // On-screen Checkpoint activation banner
     this.checkpointBanner = {
       active: false,
@@ -1752,6 +1744,9 @@ class Game {
         void this.scoreDisplay.offsetWidth;
         this.scoreDisplay.classList.add('pop');
       }
+    }
+  }
+
   showCheckpointBanner(title, subtitle) {
     this.checkpointBanner = {
       active: true,
@@ -1799,8 +1794,7 @@ class Game {
     // Update Player & Physics
     this.player.update(dt, this.input, this.world.platforms, this.particleSystem);
 
-    // Update Collectibles & Floating Text
-    this.world.update(dt, this.particleSystem);
+    // Update Floating Text
     this.floatingTexts.update(dt);
 
     // Check Collectible Pickups
@@ -1857,12 +1851,7 @@ class Game {
     // -------------------------------------------------------------------------
     this.camera.apply(ctx);
 
-    // Draw Platforms
-    this.world.drawPlatforms(ctx);
-
-    // Draw Collectibles (Coins & Gems)
-    this.world.drawCollectibles(ctx);
-    // Draw Platforms & Checkpoints
+    // Draw Platforms, Checkpoints & Collectibles
     this.world.draw(ctx, this.player);
 
     // Draw Particles
@@ -1922,7 +1911,7 @@ class Game {
     ctx.shadowBlur = 20;
     ctx.fillStyle = 'rgba(11, 15, 25, 0.94)';
     ctx.beginPath();
-    this.world.drawRoundedRect(ctx, bannerX, bannerY, bannerW, bannerH, 14);
+    this.drawRoundedRect(ctx, bannerX, bannerY, bannerW, bannerH, 14);
     ctx.fill();
 
     ctx.shadowBlur = 0;
@@ -2021,10 +2010,10 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 260, 150);
+    ctx.fillRect(16, 60, 270, 180);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 260, 150);
+    ctx.strokeRect(16, 60, 270, 180);
 
     const activeCpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'None';
 
@@ -2034,19 +2023,27 @@ class Game {
     ctx.fillStyle = '#f8fafc';
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 118);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 136);
-    ctx.fillText(`Wall: ${this.player.isTouchingWall} (dir: ${this.player.wallDir}) | Slide: ${this.player.isWallSliding}`, 26, 154);
-    ctx.fillText(`Wall Coyote: ${this.player.wallCoyoteTimer.toFixed(2)}s`, 26, 172);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 190);
-    ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
-    ctx.fillText(`Score: ${this.score} (${this.collectedCount}/${this.totalCollectibles})`, 26, 140);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 160);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 180);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
-    ctx.fillText(`Checkpoint: ${activeCpName}`, 26, 160);
-    ctx.fillText(`Spawn Pos: (${Math.round(this.currentSpawnPoint.x)}, ${Math.round(this.currentSpawnPoint.y)})`, 26, 180);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 195);
+    ctx.fillText(`Score: ${this.score} (${this.collectedCount}/${this.totalCollectibles})`, 26, 136);
+    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 154);
+    ctx.fillText(`Wall: ${this.player.isTouchingWall} (dir: ${this.player.wallDir}) | Slide: ${this.player.isWallSliding}`, 26, 172);
+    ctx.fillText(`Checkpoint: ${activeCpName}`, 26, 190);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 208);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 226);
     ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
   }
 
   loop(currentTime) {
