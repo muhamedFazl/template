@@ -41,6 +41,23 @@ const CONFIG = {
     spawnPoint: { x: 80, y: 290 },
     deathY: 750,            // Y-coordinate below which the player respawns
   },
+  lighting: {
+    enabled: true,
+    ambientDarkness: 0.76,   // Ambient darkness intensity (0.0 = bright, 1.0 = dark)
+    ambientColor: '#070b14', // Color tint of the ambient night
+    lantern: {
+      radiusMultiplier: 5.0,
+      baseRadius: 210,         // 5x player height (42px * 5)
+      flickerSpeed: 8.5,       // Speed of flame flickering
+      flickerAmount: 6.0,      // Pixel variance for organic flame flickers
+      glowColorInner: 'rgba(244, 63, 94, 0.38)',  // Rich pink illumination
+      glowColorMid: 'rgba(236, 72, 153, 0.20)',   // Soft mid pink ambient aura
+      glowColorOuter: 'rgba(219, 39, 119, 0)',    // Smooth falloff to darkness
+      flameBodyColor: '#db2777',                  // Deep vibrant rose-pink outer flame
+      flameMidColor: '#ec4899',                   // Vivid hot-pink flame body
+      flameCoreColor: '#f472b6',                  // Bright saturated pink flame core
+    }
+  },
   colors: {
     skyTop: '#0b0f19',
     skyBottom: '#1a2333',
@@ -461,6 +478,21 @@ class ParticleSystem {
     });
   }
 
+  emitLanternEmber(x, y) {
+    this.emit(x, y, 1, {
+      color: Math.random() > 0.5 ? '#ec4899' : '#f472b6',
+      sizeMin: 1.5,
+      sizeMax: 2.8,
+      speedMin: 15,
+      speedMax: 45,
+      lifeMin: 0.35,
+      lifeMax: 0.65,
+      angleMin: -Math.PI * 0.75,
+      angleMax: -Math.PI * 0.25,
+      gravity: -80,
+    });
+  }
+
   emitBreakDebris(x, y, width, height) {
     const count = Math.max(12, Math.floor(width / 8));
     for (let i = 0; i < count; i++) {
@@ -688,7 +720,7 @@ class FloatingTextSystem {
 }
 
 // =============================================================================
-// 5. PLATFORM (STATIC, MOVING, CRUMBLING, HYBRID)
+// 5. PLATFORM (MULTI-BLOCK OSCILLATION, CRUMBLING & HYBRID GAUGE)
 // =============================================================================
 class Platform {
   constructor(config) {
@@ -701,18 +733,20 @@ class Platform {
 
     this.startX = config.x;
     this.startY = config.y;
-    this.rangeX = config.rangeX || 0;
-    this.rangeY = config.rangeY || 0;
-    this.speed = config.speed || 1.2;
+    this.oscX = config.oscX || config.rangeX || 0;
+    this.oscY = config.oscY || config.rangeY || 0;
+    this.speedX = config.speedX || config.speed || 1.4;
+    this.speedY = config.speedY || config.speed || 1.4;
     this.phase = config.phase || 0;
-    this.motionTime = this.phase;
+    this.motionTimeX = this.phase;
+    this.motionTimeY = this.phase;
     this.vx = 0;
     this.vy = 0;
     this.deltaX = 0;
     this.deltaY = 0;
 
     this.state = 'idle';
-    this.shakeDuration = config.shakeDuration || 0.65;
+    this.shakeDuration = config.crumbleDuration || config.shakeDuration || 0.7;
     this.respawnDuration = config.respawnDuration || 3.0;
     this.timer = 0;
     this.shakeOffsetX = 0;
@@ -743,15 +777,16 @@ class Platform {
     const isCrumbling = this.type === 'crumbling' || this.type === 'moving_crumbling';
 
     if (isMoving && this.state !== 'broken') {
-      this.motionTime += dt * this.speed;
+      this.motionTimeX += dt * this.speedX;
+      this.motionTimeY += dt * this.speedY;
       const prevX = this.x;
       const prevY = this.y;
 
-      if (this.rangeX !== 0) {
-        this.x = this.startX + Math.sin(this.motionTime) * this.rangeX;
+      if (this.oscX !== 0) {
+        this.x = this.startX + Math.sin(this.motionTimeX) * this.oscX;
       }
-      if (this.rangeY !== 0) {
-        this.y = this.startY + Math.sin(this.motionTime) * this.rangeY;
+      if (this.oscY !== 0) {
+        this.y = this.startY + Math.sin(this.motionTimeY) * this.oscY;
       }
 
       this.deltaX = this.x - prevX;
@@ -869,6 +904,7 @@ class Platform {
     this.drawRoundedRect(ctx, drawX + 1, drawY + 1, w - 2, Math.min(6, h / 2), 3);
     ctx.fill();
 
+    // Specular Sheen Sweep
     const sheenCycle = (this.sheenTime) % 5.0;
     if (sheenCycle < 1.2) {
       const progress = sheenCycle / 1.2;
@@ -889,8 +925,8 @@ class Platform {
     }
 
     if (this.label) {
-      ctx.fillStyle = '#64748b';
-      ctx.font = '11px sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(this.label, drawX + w / 2, drawY + h - 8);
     }
@@ -993,7 +1029,7 @@ class BouncePad {
     this.y = y;
     this.width = 40;
     this.height = 20;
-    this.type = type; // 'spring' | 'pad'
+    this.type = type;
     this.bounceForce = CONFIG.physics.bouncePadForce || 950;
     this.compressScale = 1.0;
     this.animTimer = 0;
@@ -1120,7 +1156,7 @@ class Collectible {
   constructor(x, y, type = 'coin') {
     this.x = x;
     this.y = y;
-    this.type = type; // 'coin' | 'gem'
+    this.type = type;
     this.collected = false;
 
     if (this.type === 'gem') {
@@ -1360,7 +1396,7 @@ class Collectible {
 // =============================================================================
 class Enemy {
   constructor(config) {
-    this.type = config.type; // 'walker' | 'flyer'
+    this.type = config.type;
     this.startX = config.x;
     this.startY = config.y;
     this.x = config.x;
@@ -1475,7 +1511,6 @@ class Enemy {
         this.y += Math.sin(this.hoverTimer) * 0.5;
       }
 
-      // Clamp distance from origin anchor
       const dxFromStart = this.centerX - this.startX;
       const dyFromStart = this.centerY - this.startY;
       const distFromStart = Math.sqrt(dxFromStart * dxFromStart + dyFromStart * dyFromStart);
@@ -1591,7 +1626,7 @@ class Enemy {
 }
 
 // =============================================================================
-// 10. PLAYER (PHYSICS, ANIMATION, HAT, HEALTH & I-FRAMES)
+// 10. PLAYER (PHYSICS, ANIMATION, HAT, PINK LANTERN, HEALTH & I-FRAMES)
 // =============================================================================
 class Player {
   constructor(x, y) {
@@ -1628,6 +1663,11 @@ class Player {
     this.walkAnimTimer = 0;
     this.blinkTimer = 2.0 + Math.random() * 2.0;
     this.isBlinking = false;
+
+    // Pink Flame Lantern
+    this.flameTimer = 0;
+    this.lanternSway = 0;
+    this.emberTimer = 0;
   }
 
   takeDamage(amount = 1, fromX = 0, fromY = 0, particleSystem = null, camera = null) {
@@ -1705,6 +1745,23 @@ class Player {
 
   get centerY() {
     return this.y + this.height / 2;
+  }
+
+  getLanternWorldPos() {
+    const handOffsetX = this.facing * (this.width / 2 + 3);
+    const handOffsetY = -this.height * 0.45;
+    const swayOffset = Math.sin(this.lanternSway) * 8;
+    return {
+      x: this.centerX + handOffsetX + swayOffset,
+      y: this.y + this.height + handOffsetY + 8
+    };
+  }
+
+  getLanternRadius() {
+    const base = CONFIG.lighting.lantern.baseRadius || (this.height * CONFIG.lighting.lantern.radiusMultiplier);
+    const flicker = Math.sin(this.flameTimer * CONFIG.lighting.lantern.flickerSpeed) * CONFIG.lighting.lantern.flickerAmount
+                  + Math.cos(this.flameTimer * 14.3) * (CONFIG.lighting.lantern.flickerAmount * 0.4);
+    return Math.max(10, base + flicker);
   }
 
   update(dt, input, platforms, bouncePads, particleSystem) {
@@ -1932,7 +1989,7 @@ class Player {
       this.standingPlatform = null;
     }
 
-    // Animation
+    // Animation & Lantern
     this.scaleX += (1 - this.scaleX) * 12 * dt;
     this.scaleY += (1 - this.scaleY) * 12 * dt;
 
@@ -1948,6 +2005,20 @@ class Player {
       if (this.blinkTimer <= -0.15) {
         this.isBlinking = false;
         this.blinkTimer = 2.5 + Math.random() * 3.0;
+      }
+    }
+
+    // Lantern sway & embers
+    this.flameTimer += dt;
+    const targetSway = -(this.vx / CONFIG.physics.moveSpeed) * 0.3 + (this.isGrounded && Math.abs(this.vx) > 20 ? Math.sin(this.walkAnimTimer) * 0.14 : 0);
+    this.lanternSway += (targetSway - this.lanternSway) * 10 * dt;
+
+    this.emberTimer += dt;
+    if (this.emberTimer >= 0.1) {
+      this.emberTimer = 0;
+      if (particleSystem && CONFIG.lighting.enabled) {
+        const lanternPos = this.getLanternWorldPos();
+        particleSystem.emitLanternEmber(lanternPos.x, lanternPos.y - 8);
       }
     }
   }
@@ -1983,11 +2054,13 @@ class Player {
     const h = this.height;
     const cornerRadius = 8;
 
+    // Drop shadow
     ctx.fillStyle = CONFIG.colors.playerGlow;
     ctx.beginPath();
     ctx.ellipse(0, 0, w * 0.6, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Body Gradient
     const bodyGradient = ctx.createLinearGradient(-w / 2, -h, w / 2, 0);
     bodyGradient.addColorStop(0, '#67e8f9');
     bodyGradient.addColorStop(1, CONFIG.colors.playerBody);
@@ -2000,6 +2073,34 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
+    // Sleek Glassy Specular
+    ctx.save();
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -w / 2 + 2, -h + 2, w - 4, h * 0.45, cornerRadius - 2);
+    const bodyGloss = ctx.createLinearGradient(0, -h + 2, 0, -h * 0.55);
+    bodyGloss.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+    bodyGloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = bodyGloss;
+    ctx.fill();
+
+    // Sleek Pink Rim Reflection from Lantern Flame
+    const rimX = this.facing > 0 ? (w / 2 - 2.5) : (-w / 2 + 2.5);
+    const rimGrad = ctx.createLinearGradient(0, -h * 0.85, 0, -h * 0.15);
+    rimGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+    rimGrad.addColorStop(0.4, 'rgba(255, 190, 230, 0.85)');
+    rimGrad.addColorStop(0.7, 'rgba(236, 72, 153, 0.65)');
+    rimGrad.addColorStop(1, 'rgba(219, 39, 119, 0)');
+
+    ctx.strokeStyle = rimGrad;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(rimX, -h * 0.80);
+    ctx.lineTo(rimX, -h * 0.20);
+    ctx.stroke();
+    ctx.restore();
+
+    // Procedural Animated Eyes
     if (!this.isBlinking) {
       const eyeLookOffset = this.facing * 3.5;
       const eyeY = -h * 0.65;
@@ -2031,6 +2132,7 @@ class Player {
     }
 
     this.drawHat(ctx, w, h);
+    this.drawLantern(ctx, w, h);
 
     ctx.restore();
   }
@@ -2051,6 +2153,19 @@ class Player {
     ctx.ellipse(0, 0, (w / 2) + 6, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    // Brim sleek reflection
+    ctx.save();
+    const brimRimGrad = ctx.createLinearGradient(0, 0, this.facing * ((w / 2) + 6), 0);
+    brimRimGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+    brimRimGrad.addColorStop(0.6, 'rgba(255, 190, 230, 0.85)');
+    brimRimGrad.addColorStop(1, 'rgba(244, 114, 182, 0.5)');
+    ctx.strokeStyle = brimRimGrad;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.ellipse(this.facing * 2, 0, (w / 2) + 4, 3.8, 0, this.facing > 0 ? -0.6 : Math.PI - 0.8, this.facing > 0 ? 0.8 : Math.PI + 0.6);
+    ctx.stroke();
+    ctx.restore();
 
     // 2. Hat Crown
     const crownWidth = w * 0.72;
@@ -2085,6 +2200,139 @@ class Player {
     ctx.beginPath();
     ctx.arc(-2 + this.facing * 3, -crownHeight, 3.5, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
+  }
+
+  drawLantern(ctx, w, h) {
+    ctx.save();
+    const handX = this.facing * (w / 2 + 1);
+    const handY = -h * 0.45;
+
+    // Small arm holding lantern
+    ctx.fillStyle = '#38bdf8';
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(handX - this.facing * 1.5, handY + 1, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Pivot at hand attachment
+    ctx.translate(handX, handY);
+    ctx.rotate(this.lanternSway);
+
+    // Hanging chain
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 6);
+    ctx.stroke();
+
+    ctx.translate(0, 6);
+
+    const lanternW = 13;
+    const lanternH = 17;
+
+    // Brass top ring
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, -lanternH / 2 - 2, 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Top cap
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-lanternW / 2 - 2, -lanternH / 2 + 2);
+    ctx.lineTo(-lanternW / 4, -lanternH / 2 - 1.5);
+    ctx.lineTo(lanternW / 4, -lanternH / 2 - 1.5);
+    ctx.lineTo(lanternW / 2 + 2, -lanternH / 2 + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Glass Chamber
+    const glassX = -lanternW / 2;
+    const glassY = -lanternH / 2 + 2;
+    const glassW = lanternW;
+    const glassH = lanternH - 4;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+    ctx.fillRect(glassX, glassY, glassW, glassH);
+
+    const glassGlow = ctx.createRadialGradient(0, glassY + glassH * 0.6, 1, 0, glassY + glassH * 0.6, lanternW);
+    glassGlow.addColorStop(0, 'rgba(244, 63, 94, 0.30)');
+    glassGlow.addColorStop(0.7, 'rgba(219, 39, 119, 0.10)');
+    glassGlow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = glassGlow;
+    ctx.fillRect(glassX, glassY, glassW, glassH);
+
+    // Multi-Layer Dancing Pink Flame
+    const time = this.flameTimer;
+    const flicker1 = Math.sin(time * 16.0) * 1.2 + Math.cos(time * 23.0) * 0.6;
+    const flameWobble = Math.sin(time * 14.0) * 1.4;
+    const flameBaseY = glassY + glassH - 2;
+    const flameHeight = 9.0 + flicker1;
+
+    // Wick
+    ctx.fillStyle = '#831843';
+    ctx.beginPath();
+    ctx.arc(0, flameBaseY + 0.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer Pink Flame (Deep magenta-rose)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameBodyColor;
+    ctx.beginPath();
+    ctx.moveTo(-3.5, flameBaseY);
+    ctx.quadraticCurveTo(-4.5 + flameWobble * 0.4, flameBaseY - flameHeight * 0.45, flameWobble, flameBaseY - flameHeight);
+    ctx.quadraticCurveTo(4.5 + flameWobble * 0.4, flameBaseY - flameHeight * 0.45, 3.5, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mid Flame (Hot pink body)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameMidColor;
+    ctx.beginPath();
+    ctx.moveTo(-2.2, flameBaseY);
+    ctx.quadraticCurveTo(-2.8 + flameWobble * 0.3, flameBaseY - flameHeight * 0.4, flameWobble * 0.6, flameBaseY - flameHeight * 0.82);
+    ctx.quadraticCurveTo(2.8 + flameWobble * 0.3, flameBaseY - flameHeight * 0.4, 2.2, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Inner Flame Heart (Saturated pink)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameCoreColor;
+    ctx.beginPath();
+    ctx.moveTo(-1.2, flameBaseY);
+    ctx.quadraticCurveTo(-1.6 + flameWobble * 0.2, flameBaseY - flameHeight * 0.28, flameWobble * 0.3, flameBaseY - flameHeight * 0.55);
+    ctx.quadraticCurveTo(1.6 + flameWobble * 0.2, flameBaseY - flameHeight * 0.28, 1.2, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cage Struts
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-lanternW / 2, glassY);
+    ctx.lineTo(-lanternW / 2, glassY + glassH);
+    ctx.moveTo(lanternW / 2, glassY);
+    ctx.lineTo(lanternW / 2, glassY + glassH);
+    ctx.moveTo(-lanternW / 5, glassY);
+    ctx.lineTo(-lanternW / 5, glassY + glassH);
+    ctx.moveTo(lanternW / 5, glassY);
+    ctx.lineTo(lanternW / 5, glassY + glassH);
+    ctx.stroke();
+
+    // Metal Base
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -lanternW / 2 - 1, glassY + glassH, lanternW + 2, 3, 1);
+    ctx.fill();
+    ctx.stroke();
 
     ctx.restore();
   }
@@ -2314,8 +2562,8 @@ class Checkpoint {
 // =============================================================================
 class GoalZone {
   constructor(config) {
-    this.x = config.x || 1270;
-    this.y = config.y || 16;
+    this.x = config.x || 750;
+    this.y = config.y || -164;
     this.width = config.width || 80;
     this.height = config.height || 64;
     this.animTimer = 0;
@@ -2387,103 +2635,67 @@ class GoalZone {
 }
 
 // =============================================================================
-// 14. WORLD & SCENE PLATFORMS
+// 14. WORLD & SCENE PLATFORMS (RICH MULTI-BLOCK MOVING & CRUMBLING WORLD)
 // =============================================================================
 class World {
   constructor() {
     this.platforms = [
-      // 0. Wall Jump Shaft / Left Barrier
+      // Wall Jump Chimney / Shaft on the Left
       new Platform({ x: -100, y: -40, width: 60, height: 420, label: 'Wall Left' }),
       new Platform({ x: -10, y: 160, width: 30, height: 180, label: 'Wall Shaft' }),
 
-      // 1. Spawn Ground
-      new Platform({ x: 40, y: 340, width: 380, height: 40, label: 'Base Camp' }),
+      // Zone 1: Spawn Ground & Multi-Block Horizontal Moving Platform
+      new Platform({ x: 40, y: 340, width: 340, height: 40, label: 'Base Camp' }),
+      new Platform({ x: 530, y: 320, width: 130, height: 26, type: 'moving', oscX: 130, speedX: 1.5, label: 'Moving ↔' }),
+      new Platform({ x: 790, y: 300, width: 150, height: 28, label: 'Mid Island' }),
 
-      // 2. High Floating Island
-      new Platform({ x: 480, y: 260, width: 140, height: 26 }),
+      // Zone 2: Crumbling Stepping Stones Across Pit
+      new Platform({ x: 1010, y: 280, width: 95, height: 24, type: 'crumbling', oscX: 65, speedX: 1.8, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1190, y: 240, width: 95, height: 24, type: 'crumbling', oscX: 70, speedX: 2.1, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1370, y: 200, width: 95, height: 24, type: 'crumbling', oscX: 60, speedX: 1.9, crumbleDuration: 0.8, label: 'Crumble ↔' }),
+      new Platform({ x: 1540, y: 180, width: 160, height: 30, label: 'Mid Ridge' }),
 
-      // 3. Horizontally Moving Platform
-      new Platform({
-        x: 680, y: 200, width: 130, height: 24,
-        type: 'moving',
-        rangeX: 90,
-        speed: 1.5,
-        label: 'Moving East'
-      }),
+      // Zone 3: 2D Swaying Elevator (Multi-Block Vertical & Horizontal Travel)
+      new Platform({ x: 1790, y: 130, width: 120, height: 24, type: 'moving', oscX: 80, oscY: 135, speedX: 1.3, speedY: 1.3, label: 'Elevator ⤢' }),
+      new Platform({ x: 1980, y: -20, width: 240, height: 34, label: 'Sky Summit' }),
 
-      // 4. Stepping Island
-      new Platform({ x: 910, y: 140, width: 130, height: 24 }),
+      // Zone 4: The Gauntlet: Multi-Block Oscillating & Crumbling Hybrid Platforms
+      new Platform({ x: 1680, y: -40, width: 110, height: 22, type: 'moving_crumbling', oscX: 125, speedX: 2.0, label: 'Gauntlet 1 ⚡' }),
+      new Platform({ x: 1360, y: -60, width: 110, height: 22, type: 'moving_crumbling', oscX: 130, oscY: 50, speedX: 1.8, speedY: 1.4, label: 'Gauntlet 2 ⚡' }),
+      new Platform({ x: 1040, y: -80, width: 110, height: 22, type: 'moving_crumbling', oscX: 140, speedX: 2.2, label: 'Gauntlet 3 ⚡' }),
 
-      // 5. Crumbling Stepping Stones
-      new Platform({
-        x: 1090, y: 90, width: 65, height: 22,
-        type: 'crumbling',
-        shakeDuration: 0.6,
-        label: 'Crumb 1'
-      }),
-      new Platform({
-        x: 1180, y: 70, width: 65, height: 22,
-        type: 'crumbling',
-        shakeDuration: 0.55,
-        label: 'Crumb 2'
-      }),
+      // Zone 5: Grand Peak (Goal Zone)
+      new Platform({ x: 670, y: -100, width: 250, height: 34, label: 'Grand Peak 🏆' }),
 
-      // 6. Grand Peak (Goal Zone)
-      new Platform({ x: 1270, y: 80, width: 180, height: 32, label: 'The Peak' }),
+      // Zone 6: Descending Upper Route
+      new Platform({ x: 470, y: -10, width: 100, height: 24, type: 'crumbling', oscX: 55, speedX: 1.6, label: 'Crumble ↔' }),
+      new Platform({ x: 290, y: 70, width: 110, height: 24, type: 'moving', oscX: 110, speedX: 1.6, label: 'Moving ↔' }),
+      new Platform({ x: 120, y: 170, width: 130, height: 26, label: 'High Overlook' }),
 
-      // 7. Descending Upper Route
-      new Platform({ x: 1500, y: 140, width: 140, height: 24 }),
-      new Platform({ x: 1690, y: 210, width: 130, height: 24 }),
+      // Zone 7: Lower Path Runway
+      new Platform({ x: 1430, y: 380, width: 180, height: 34, label: 'Lower Path' }),
+      new Platform({ x: 1720, y: 360, width: 120, height: 24, type: 'moving_crumbling', oscX: 140, speedX: 2.4, label: 'Danger ⚡' }),
+      new Platform({ x: 2020, y: 320, width: 280, height: 38, label: 'Far Runway' }),
 
-      // 8. Lower Path Runway
-      new Platform({ x: 1870, y: 260, width: 440, height: 36, label: 'Runway' }),
-
-      // 9. Vertically Oscillating Elevator
-      new Platform({
-        x: 1040, y: 280, width: 120, height: 24,
-        type: 'moving',
-        rangeY: 80,
-        speed: 1.8,
-        label: 'Elevator'
-      }),
-
-      // 10. Lower Gap Bridge Platform
-      new Platform({ x: 1420, y: 380, width: 180, height: 26, label: 'Lower Path' }),
-
-      // 11. Oscillating & Crumbling Hybrid Gauntlet Platforms
-      new Platform({
-        x: 740, y: 60, width: 120, height: 24,
-        type: 'moving_crumbling',
-        rangeX: 60,
-        speed: 1.6,
-        label: 'Gauntlet 1'
-      }),
-      new Platform({
-        x: 500, y: 80, width: 100, height: 24,
-        type: 'moving_crumbling',
-        rangeY: 50,
-        speed: 1.4,
-        label: 'Gauntlet 2'
-      }),
-      new Platform({ x: 280, y: 140, width: 120, height: 24, label: 'High Overlook' }),
-      new Platform({ x: 1350, y: -160, width: 220, height: 30, label: 'Space Peak' }),
+      // Secret High Altitude Space Peak
+      new Platform({ x: 1350, y: -200, width: 220, height: 30, label: 'Space Peak' }),
     ];
 
     // Springs and Neon Bounce Pads
     this.bouncePads = [
-      new BouncePad(320, 340 - 20, 'spring'),
-      new BouncePad(640, 380 - 20, 'pad'),
-      new BouncePad(1510, 380 - 20, 'spring'),
-      new BouncePad(2100, 260 - 20, 'pad'),
+      new BouncePad(300, 340 - 20, 'spring'),
+      new BouncePad(680, 380 - 20, 'pad'),
+      new BouncePad(1600, 380 - 20, 'spring'),
+      new BouncePad(2180, 320 - 20, 'pad'),
     ];
 
     // Spike Hazards
     this.hazards = [
-      new SpikeHazard({ x: 530, y: 260 - 16, width: 40, height: 16, count: 3 }),
-      new SpikeHazard({ x: 990, y: 140 - 16, width: 32, height: 16, count: 2 }),
-      new SpikeHazard({ x: 1550, y: 140 - 16, width: 40, height: 16, count: 3 }),
-      new SpikeHazard({ x: 1980, y: 260 - 16, width: 48, height: 16, count: 4 }),
-      new SpikeHazard({ x: 340, y: 140 - 16, width: 32, height: 16, count: 2 }),
+      new SpikeHazard({ x: 840, y: 300 - 16, width: 40, height: 16, count: 3 }),
+      new SpikeHazard({ x: 1480, y: 380 - 16, width: 40, height: 16, count: 3 }),
+      new SpikeHazard({ x: 2120, y: 320 - 16, width: 48, height: 16, count: 4 }),
+      new SpikeHazard({ x: 160, y: 170 - 16, width: 32, height: 16, count: 2 }),
+      new SpikeHazard({ x: 2080, y: -20 - 16, width: 40, height: 16, count: 3 }),
     ];
 
     // Collectibles (Coins & Gems)
@@ -2492,9 +2704,10 @@ class World {
     // Interactive Checkpoints
     this.checkpoints = [
       new Checkpoint({ id: 'base', x: 120, y: 340, label: 'Base Camp', isBaseCamp: true, isActive: true }),
-      new Checkpoint({ id: 'mid', x: 930, y: 140, label: 'Mid Ridge', isActive: false }),
-      new Checkpoint({ id: 'peak', x: 1400, y: 80, label: 'High Peak', isActive: false }),
-      new Checkpoint({ id: 'runway', x: 2180, y: 260, label: 'Far Runway', isActive: false }),
+      new Checkpoint({ id: 'mid', x: 1570, y: 180, label: 'Mid Ridge', isActive: false }),
+      new Checkpoint({ id: 'summit', x: 2050, y: -20, label: 'Sky Summit', isActive: false }),
+      new Checkpoint({ id: 'peak', x: 840, y: -100, label: 'Grand Peak', isActive: false }),
+      new Checkpoint({ id: 'runway', x: 2150, y: 320, label: 'Far Runway', isActive: false }),
     ];
   }
 
@@ -2502,24 +2715,26 @@ class World {
     return [
       new Collectible(180, 295, 'coin'),
       new Collectible(250, 295, 'coin'),
-      new Collectible(320, 295, 'coin'),
-      new Collectible(415, 260, 'coin'),
-      new Collectible(445, 220, 'coin'),
-      new Collectible(540, 235, 'coin'),
-      new Collectible(750, 175, 'coin'),
-      new Collectible(980, 105, 'coin'),
-      new Collectible(1185, 35, 'coin'),
-      new Collectible(1260, 25, 'gem'),
-      new Collectible(1340, 35, 'coin'),
-      new Collectible(1240, 275, 'coin'),
-      new Collectible(1520, 335, 'coin'),
-      new Collectible(1790, 255, 'coin'),
-      new Collectible(2010, 195, 'coin'),
-      new Collectible(2110, 195, 'coin'),
-      new Collectible(2220, 185, 'gem'),
-      new Collectible(790, 15, 'coin'),
-      new Collectible(540, 30, 'gem'),
-      new Collectible(330, 90, 'coin'),
+      new Collectible(530, 260, 'coin'),
+      new Collectible(600, 220, 'coin'),
+      new Collectible(810, 250, 'coin'),
+      new Collectible(1010, 220, 'coin'),
+      new Collectible(1190, 180, 'coin'),
+      new Collectible(1370, 140, 'coin'),
+      new Collectible(1590, 120, 'gem'),
+      new Collectible(1850, 60, 'coin'),
+      new Collectible(2020, -70, 'gem'),
+      new Collectible(1680, -90, 'coin'),
+      new Collectible(1360, -110, 'gem'),
+      new Collectible(1040, -130, 'coin'),
+      new Collectible(750, -160, 'gem'),
+      new Collectible(470, -60, 'coin'),
+      new Collectible(290, 20, 'coin'),
+      new Collectible(120, 120, 'coin'),
+      new Collectible(1450, 330, 'coin'),
+      new Collectible(1720, 310, 'coin'),
+      new Collectible(2150, 270, 'coin'),
+      new Collectible(1350, -250, 'gem'),
     ];
   }
 
@@ -2563,6 +2778,57 @@ class World {
 
     for (const plat of this.platforms) {
       plat.draw(ctx);
+
+      // Dynamic Pink Specular Reflection on Platform Surface from Lantern
+      if (CONFIG.lighting.enabled && player && player.getLanternWorldPos) {
+        const lanternPos = player.getLanternWorldPos();
+        const radius = player.getLanternRadius();
+        const dx = lanternPos.x - (plat.x + plat.width / 2);
+        const dy = lanternPos.y - plat.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < radius && lanternPos.y < plat.y + 40 && lanternPos.y > plat.y - radius) {
+          const intensity = Math.max(0, 1 - (dist / radius));
+          const hitX = Math.max(plat.x, Math.min(plat.x + plat.width, lanternPos.x));
+          const specSpread = Math.min(plat.width / 2, 45);
+          const specStartX = Math.max(plat.x, hitX - specSpread);
+          const specEndX = Math.min(plat.x + plat.width, hitX + specSpread);
+
+          if (specEndX > specStartX) {
+            ctx.save();
+            const specGrad = ctx.createLinearGradient(specStartX, plat.y, specEndX, plat.y);
+            specGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+            specGrad.addColorStop(0.5, `rgba(255, 190, 230, ${0.9 * intensity})`);
+            specGrad.addColorStop(1, 'rgba(244, 114, 182, 0)');
+
+            ctx.strokeStyle = specGrad;
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(specStartX, plat.y + 1);
+            ctx.lineTo(specEndX, plat.y + 1);
+            ctx.stroke();
+
+            const isLeft = lanternPos.x < plat.x;
+            const isRight = lanternPos.x > plat.x + plat.width;
+            if ((isLeft || isRight) && lanternPos.y > plat.y - 20 && lanternPos.y < plat.y + plat.height + 40) {
+              const sideX = isLeft ? plat.x + 1 : plat.x + plat.width - 1;
+              const sideGrad = ctx.createLinearGradient(sideX, plat.y, sideX, plat.y + plat.height);
+              sideGrad.addColorStop(0, `rgba(255, 180, 220, ${0.7 * intensity})`);
+              sideGrad.addColorStop(0.5, `rgba(244, 114, 182, ${0.4 * intensity})`);
+              sideGrad.addColorStop(1, 'rgba(219, 39, 119, 0)');
+
+              ctx.strokeStyle = sideGrad;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(sideX, plat.y + 3);
+              ctx.lineTo(sideX, plat.y + plat.height - 3);
+              ctx.stroke();
+            }
+
+            ctx.restore();
+          }
+        }
+      }
     }
 
     for (const pad of this.bouncePads) {
@@ -2590,16 +2856,16 @@ class World {
 
     for (const plat of this.platforms) {
       if (plat.type === 'moving' || plat.type === 'moving_crumbling') {
-        if (plat.rangeX !== 0) {
+        if (plat.oscX !== 0) {
           ctx.beginPath();
-          ctx.moveTo(plat.startX - plat.rangeX + plat.width / 2, plat.y + plat.height / 2);
-          ctx.lineTo(plat.startX + plat.rangeX + plat.width / 2, plat.y + plat.height / 2);
+          ctx.moveTo(plat.startX - plat.oscX + plat.width / 2, plat.y + plat.height / 2);
+          ctx.lineTo(plat.startX + plat.oscX + plat.width / 2, plat.y + plat.height / 2);
           ctx.stroke();
         }
-        if (plat.rangeY !== 0) {
+        if (plat.oscY !== 0) {
           ctx.beginPath();
-          ctx.moveTo(plat.x + plat.width / 2, plat.startY - plat.rangeY + plat.height / 2);
-          ctx.lineTo(plat.x + plat.width / 2, plat.startY + plat.rangeY + plat.height / 2);
+          ctx.moveTo(plat.x + plat.width / 2, plat.startY - plat.oscY + plat.height / 2);
+          ctx.lineTo(plat.x + plat.width / 2, plat.startY + plat.oscY + plat.height / 2);
           ctx.stroke();
         }
       }
@@ -2633,7 +2899,8 @@ class Game {
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
-    this.goalZone = new GoalZone({ x: 1270, y: 16, width: 80, height: 64 });
+    // Goal Zone finish line on Grand Peak
+    this.goalZone = new GoalZone({ x: 750, y: -164, width: 80, height: 64 });
 
     this.timerState = 'READY';
     this.runTime = 0.0;
@@ -2646,14 +2913,14 @@ class Game {
     this.player.y = this.currentSpawnPoint.y;
     this.camera.snapTo(this.player.centerX, this.player.centerY);
 
-    // Enemies (Spread out along challenging obstacle corridors)
+    // Enemies placed along challenging corridors
     this.enemies = [
-      new Enemy({ type: 'walker', platform: this.world.platforms[2], x: 500, speed: 70 }),
-      new Enemy({ type: 'walker', platform: this.world.platforms[4], x: 950, speed: 85 }),
-      new Enemy({ type: 'walker', platform: this.world.platforms[8], x: 1950, speed: 100 }),
-      new Enemy({ type: 'flyer', x: 620, y: 350, rangeX: 180, detectRadius: 240, speed: 100 }),
-      new Enemy({ type: 'flyer', x: 1100, y: 350, rangeX: 200, detectRadius: 240, speed: 110 }),
-      new Enemy({ type: 'flyer', x: 1850, y: 140, rangeX: 220, detectRadius: 240, speed: 105 }),
+      new Enemy({ type: 'walker', platform: this.world.platforms[4], x: 830, speed: 75 }),
+      new Enemy({ type: 'walker', platform: this.world.platforms[9], x: 2020, speed: 90 }),
+      new Enemy({ type: 'walker', platform: this.world.platforms[16], x: 160, speed: 70 }),
+      new Enemy({ type: 'flyer', x: 650, y: 340, rangeX: 180, detectRadius: 240, speed: 100 }),
+      new Enemy({ type: 'flyer', x: 1250, y: 300, rangeX: 200, detectRadius: 240, speed: 110 }),
+      new Enemy({ type: 'flyer', x: 1520, y: -120, rangeX: 220, detectRadius: 240, speed: 110 }),
     ];
 
     this.score = 0;
@@ -2668,6 +2935,12 @@ class Game {
       timer: 0,
       maxTime: 2.6,
     };
+
+    // Offscreen lighting canvas
+    this.lightCanvas = document.createElement('canvas');
+    this.lightCanvas.width = CONFIG.canvas.width;
+    this.lightCanvas.height = CONFIG.canvas.height;
+    this.lightCtx = this.lightCanvas.getContext('2d');
 
     this.respawnCount = 0;
     this.debugMode = false;
@@ -2869,7 +3142,6 @@ class Game {
       }
     }
 
-    // Enemies collision & stomp mechanics
     for (const enemy of this.enemies) {
       enemy.update(dt, this.player);
       if (!enemy.isDead) {
@@ -2880,7 +3152,6 @@ class Game {
           const isAbove = playerBottom <= enemyTop + 20;
 
           if (isFallingOrApex && isAbove) {
-            // Stomp Kill!
             enemy.isDead = true;
             this.killsCount++;
             this.player.vy = -CONFIG.physics.jumpForce * 0.85;
@@ -3001,6 +3272,11 @@ class Game {
 
     this.camera.restore(ctx);
 
+    // Darkness & Lantern Illumination Layer Pass
+    if (CONFIG.lighting.enabled) {
+      this.renderLighting(ctx);
+    }
+
     if (this.checkpointBanner.active) {
       this.drawCheckpointBanner(ctx, w, h);
     }
@@ -3008,6 +3284,63 @@ class Game {
     if (this.debugMode) {
       this.drawDebugOverlay(ctx);
     }
+  }
+
+  renderLighting(ctx) {
+    const lightCtx = this.lightCtx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    lightCtx.clearRect(0, 0, w, h);
+    lightCtx.fillStyle = `rgba(7, 11, 20, ${CONFIG.lighting.ambientDarkness})`;
+    lightCtx.fillRect(0, 0, w, h);
+
+    this.camera.apply(lightCtx);
+    lightCtx.globalCompositeOperation = 'destination-out';
+
+    const lanternPos = this.player.getLanternWorldPos();
+    const radius = this.player.getLanternRadius();
+
+    const maskGrad = lightCtx.createRadialGradient(
+      lanternPos.x, lanternPos.y, 0,
+      lanternPos.x, lanternPos.y, radius
+    );
+    maskGrad.addColorStop(0, 'rgba(0, 0, 0, 1.0)');
+    maskGrad.addColorStop(0.35, 'rgba(0, 0, 0, 0.95)');
+    maskGrad.addColorStop(0.65, 'rgba(0, 0, 0, 0.60)');
+    maskGrad.addColorStop(0.85, 'rgba(0, 0, 0, 0.25)');
+    maskGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+    lightCtx.fillStyle = maskGrad;
+    lightCtx.beginPath();
+    lightCtx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+    lightCtx.fill();
+
+    lightCtx.globalCompositeOperation = 'source-over';
+    this.camera.restore(lightCtx);
+
+    ctx.drawImage(this.lightCanvas, 0, 0);
+
+    // Magical Pink Light Wash
+    this.camera.apply(ctx);
+    ctx.save();
+
+    const glowGrad = ctx.createRadialGradient(
+      lanternPos.x, lanternPos.y, 0,
+      lanternPos.x, lanternPos.y, radius
+    );
+    glowGrad.addColorStop(0, CONFIG.lighting.lantern.glowColorInner);
+    glowGrad.addColorStop(0.35, CONFIG.lighting.lantern.glowColorMid);
+    glowGrad.addColorStop(0.70, 'rgba(219, 39, 119, 0.08)');
+    glowGrad.addColorStop(1.0, CONFIG.lighting.lantern.glowColorOuter);
+
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    this.camera.restore(ctx);
   }
 
   drawCheckpointBanner(ctx, w, h) {
@@ -3082,6 +3415,18 @@ class Game {
       ctx.strokeStyle = '#22c55e';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(this.goalZone.x, this.goalZone.y, this.goalZone.width, this.goalZone.height);
+    }
+
+    if (CONFIG.lighting && CONFIG.lighting.enabled && this.player.getLanternWorldPos) {
+      const lanternPos = this.player.getLanternWorldPos();
+      const radius = this.player.getLanternRadius();
+      ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     for (const pad of this.world.bouncePads) {
@@ -3165,7 +3510,7 @@ class Game {
     ctx.fillText(`Score: ${this.score} (${this.collectedCount}/${this.totalCollectibles}) | Pads: ${this.world.bouncePads.length}`, 26, 210);
     ctx.fillText(`Checkpoint: ${activeCpName} | Hazards: ${this.world.hazards.length}`, 26, 226);
     ctx.fillText(`Timer: ${this.timerState} (${this.runTime.toFixed(2)}s) | PB: ${this.formatTime(this.bestTime)}`, 26, 242);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 258);
+    ctx.fillText(`Lantern: ${Math.round(this.player.getLanternRadius())}px | Particles: ${this.particleSystem.particles.length}`, 26, 258);
     ctx.restore();
   }
 
