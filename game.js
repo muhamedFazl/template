@@ -50,6 +50,12 @@ const CONFIG = {
     playerHatBand: '#fbbf24',
     playerHatBrim: '#e11d48',
     particle: '#38bdf8',
+    coin: '#fbbf24',
+    coinGlow: 'rgba(251, 191, 36, 0.35)',
+    coinBorder: '#d97706',
+    gem: '#c084fc',
+    gemGlow: 'rgba(192, 132, 252, 0.45)',
+    gemBorder: '#9333ea',
   }
 };
 
@@ -191,6 +197,30 @@ class ParticleSystem {
     });
   }
 
+  emitCollect(x, y, color = CONFIG.colors.coin, count = 18) {
+    this.emit(x, y, count, {
+      color,
+      sizeMin: 2.5,
+      sizeMax: 6,
+      speedMin: 60,
+      speedMax: 220,
+      lifeMin: 0.35,
+      lifeMax: 0.75,
+      gravity: 120,
+    });
+    // Extra sparkling white glints
+    this.emit(x, y, Math.floor(count / 2), {
+      color: '#ffffff',
+      sizeMin: 1.5,
+      sizeMax: 3.5,
+      speedMin: 40,
+      speedMax: 160,
+      lifeMin: 0.2,
+      lifeMax: 0.5,
+      gravity: 60,
+    });
+  }
+
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -220,7 +250,324 @@ class ParticleSystem {
 }
 
 // =============================================================================
-// 4. PLAYER
+// 4. FLOATING TEXT SYSTEM (Score Popups)
+// =============================================================================
+class FloatingTextSystem {
+  constructor() {
+    this.texts = [];
+  }
+
+  add(x, y, text, color = '#fbbf24') {
+    this.texts.push({
+      x,
+      y,
+      text,
+      color,
+      lifetime: 0.85,
+      maxLife: 0.85,
+      vy: -70,
+    });
+  }
+
+  update(dt) {
+    for (let i = this.texts.length - 1; i >= 0; i--) {
+      const t = this.texts[i];
+      t.lifetime -= dt;
+      if (t.lifetime <= 0) {
+        this.texts.splice(i, 1);
+        continue;
+      }
+      t.y += t.vy * dt;
+      t.vy += 35 * dt; // slight upward deceleration
+    }
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const t of this.texts) {
+      const progress = t.lifetime / t.maxLife;
+      const alpha = Math.min(1, progress * 1.6);
+      const scale = 1 + (1 - progress) * 0.25;
+
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      // Dark drop shadow outline
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.lineWidth = 3.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(t.text, 0, 0);
+
+      // Bright text fill
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+
+// =============================================================================
+// 5. COLLECTIBLE (Coins & Gems)
+// =============================================================================
+class Collectible {
+  constructor(x, y, type = 'coin') {
+    this.x = x;
+    this.y = y;
+    this.type = type; // 'coin' | 'gem'
+    this.collected = false;
+
+    if (this.type === 'gem') {
+      this.width = 24;
+      this.height = 26;
+      this.value = 500;
+      this.color = CONFIG.colors.gem;
+      this.glowColor = CONFIG.colors.gemGlow;
+      this.borderColor = CONFIG.colors.gemBorder;
+    } else {
+      this.width = 20;
+      this.height = 20;
+      this.value = 100;
+      this.color = CONFIG.colors.coin;
+      this.glowColor = CONFIG.colors.coinGlow;
+      this.borderColor = CONFIG.colors.coinBorder;
+    }
+
+    this.animTimer = Math.random() * Math.PI * 2;
+    this.bobOffset = Math.random() * Math.PI * 2;
+    this.spinOffset = Math.random() * Math.PI * 2;
+    this.twinkleTimer = 0.4 + Math.random() * 0.8;
+  }
+
+  get centerX() {
+    return this.x + this.width / 2;
+  }
+
+  get centerY() {
+    return this.y + this.height / 2;
+  }
+
+  get currentY() {
+    // Sinusoidal floating/bobbing
+    const bobAmplitude = this.type === 'gem' ? 5 : 4;
+    const bobFrequency = this.type === 'gem' ? 3.0 : 3.6;
+    return this.y + Math.sin(this.animTimer * bobFrequency + this.bobOffset) * bobAmplitude;
+  }
+
+  update(dt, particleSystem) {
+    if (this.collected) return;
+    this.animTimer += dt;
+
+    // Passive sparkle twinkle for gems
+    if (this.type === 'gem') {
+      this.twinkleTimer -= dt;
+      if (this.twinkleTimer <= 0) {
+        this.twinkleTimer = 0.6 + Math.random() * 0.8;
+        if (particleSystem) {
+          particleSystem.emit(
+            this.centerX + (Math.random() - 0.5) * 16,
+            this.currentY + this.height / 2 + (Math.random() - 0.5) * 16,
+            1,
+            {
+              color: '#ffffff',
+              sizeMin: 1.5,
+              sizeMax: 3.5,
+              speedMin: 6,
+              speedMax: 20,
+              lifeMin: 0.25,
+              lifeMax: 0.5,
+              gravity: -15,
+            }
+          );
+        }
+      }
+    }
+  }
+
+  checkCollision(player) {
+    if (this.collected) return false;
+    const curY = this.currentY;
+    return (
+      player.x < this.x + this.width &&
+      player.x + player.width > this.x &&
+      player.y < curY + this.height &&
+      player.y + player.height > curY
+    );
+  }
+
+  collect(particleSystem, floatingTexts) {
+    if (this.collected) return 0;
+    this.collected = true;
+
+    const curCenterY = this.currentY + this.height / 2;
+    if (particleSystem) {
+      particleSystem.emitCollect(
+        this.centerX,
+        curCenterY,
+        this.color,
+        this.type === 'gem' ? 24 : 16
+      );
+    }
+    if (floatingTexts) {
+      floatingTexts.add(
+        this.centerX,
+        curCenterY - 12,
+        `+${this.value}`,
+        this.type === 'gem' ? '#e879f9' : '#fbbf24'
+      );
+    }
+    return this.value;
+  }
+
+  draw(ctx) {
+    if (this.collected) return;
+
+    ctx.save();
+    const curY = this.currentY;
+    const cx = this.x + this.width / 2;
+    const cy = curY + this.height / 2;
+
+    ctx.translate(cx, cy);
+
+    if (this.type === 'coin') {
+      this.drawCoin(ctx);
+    } else {
+      this.drawGem(ctx);
+    }
+
+    ctx.restore();
+  }
+
+  drawCoin(ctx) {
+    // 3D Horizontal rotation effect
+    const spin = Math.cos(this.animTimer * 3.6 + this.spinOffset);
+    const scaleX = Math.abs(spin) * 0.75 + 0.25;
+    const facingFront = spin >= 0;
+
+    // Glowing aura
+    ctx.fillStyle = this.glowColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.scale(scaleX, 1);
+
+    // Outer coin rim
+    const grad = ctx.createLinearGradient(-10, -10, 10, 10);
+    grad.addColorStop(0, '#fef08a');
+    grad.addColorStop(0.4, '#fbbf24');
+    grad.addColorStop(1, '#d97706');
+
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = this.borderColor;
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner rim line
+    ctx.beginPath();
+    ctx.arc(0, 0, 6.8, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(217, 119, 6, 0.65)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Inner emblem / star
+    if (scaleX > 0.4) {
+      ctx.fillStyle = facingFront ? '#ffffff' : '#fef08a';
+      ctx.beginPath();
+      const rOuter = 3.6;
+      const rInner = 1.6;
+      for (let i = 0; i < 8; i++) {
+        const r = i % 2 === 0 ? rOuter : rInner;
+        const angle = (i * Math.PI) / 4;
+        const sx = Math.cos(angle) * r;
+        const sy = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  drawGem(ctx) {
+    // Pulsing floating scale
+    const pulse = 1 + Math.sin(this.animTimer * 4 + this.spinOffset) * 0.08;
+    ctx.scale(pulse, pulse);
+
+    // Glowing Aura
+    ctx.fillStyle = this.glowColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, 19, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gem Diamond / Hex Geometry
+    const w = 11.5;
+    const h = 13.5;
+    const topW = 6.5;
+    const topH = 4.5;
+
+    // Linear gradient for gem body
+    const grad = ctx.createLinearGradient(-w, -h, w, h);
+    grad.addColorStop(0, '#f5d0fe');
+    grad.addColorStop(0.35, '#c084fc');
+    grad.addColorStop(1, '#7e22ce');
+
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = '#fae8ff';
+    ctx.lineWidth = 1.3;
+
+    // Faceted gem outer contour
+    ctx.beginPath();
+    ctx.moveTo(-topW, -h + topH); // top left
+    ctx.lineTo(topW, -h + topH);   // top right
+    ctx.lineTo(w, 0);             // mid right
+    ctx.lineTo(0, h);             // bottom tip
+    ctx.lineTo(-w, 0);            // mid left
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner facet lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.lineWidth = 1;
+
+    // Top table facet
+    ctx.beginPath();
+    ctx.moveTo(-topW, -h + topH);
+    ctx.lineTo(0, -h + topH + 2.5);
+    ctx.lineTo(topW, -h + topH);
+    ctx.stroke();
+
+    // Center to bottom tip and side facets
+    ctx.beginPath();
+    ctx.moveTo(-w, 0);
+    ctx.lineTo(0, -h + topH + 2.5);
+    ctx.lineTo(w, 0);
+    ctx.moveTo(0, -h + topH + 2.5);
+    ctx.lineTo(0, h);
+    ctx.stroke();
+
+    // Twinkle shine highlight
+    const glintAlpha = 0.5 + Math.sin(this.animTimer * 5) * 0.5;
+    ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(-topW * 0.4, -h + topH + 1.2, 2.0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// =============================================================================
+// 6. PLAYER
 // =============================================================================
 class Player {
   constructor(x, y) {
@@ -568,7 +915,7 @@ class Player {
 }
 
 // =============================================================================
-// 5. CAMERA SYSTEM
+// 7. CAMERA SYSTEM
 // =============================================================================
 class Camera {
   constructor(viewportWidth, viewportHeight) {
@@ -612,7 +959,7 @@ class Camera {
 }
 
 // =============================================================================
-// 6. WORLD & SCENE PLATFORMS
+// 8. WORLD & SCENE PLATFORMS & COLLECTIBLES
 // =============================================================================
 class World {
   constructor() {
@@ -641,9 +988,64 @@ class World {
       { x: 500, y: 80, width: 100, height: 24 },
       { x: 280, y: 140, width: 120, height: 24 },
     ];
+
+    this.collectibles = this.createCollectibles();
+  }
+
+  createCollectibles() {
+    return [
+      // 1. Start Ground Coins
+      new Collectible(180, 295, 'coin'),
+      new Collectible(250, 295, 'coin'),
+      new Collectible(320, 295, 'coin'),
+
+      // 2. Jump Arc between Start Ground and Stepping Stone
+      new Collectible(415, 260, 'coin'),
+      new Collectible(445, 220, 'coin'),
+
+      // 3. Stepping Stones
+      new Collectible(540, 235, 'coin'),
+      new Collectible(750, 175, 'coin'),
+      new Collectible(980, 105, 'coin'),
+
+      // 4. High Vantage "Peak" (Coins & Center Gem)
+      new Collectible(1185, 35, 'coin'),
+      new Collectible(1260, 25, 'gem'),
+      new Collectible(1340, 35, 'coin'),
+
+      // 5. Lower Gap Challenge
+      new Collectible(1240, 275, 'coin'),
+      new Collectible(1520, 335, 'coin'),
+      new Collectible(1790, 255, 'coin'),
+
+      // 6. Long Runway (Coins & Finish Line Gem)
+      new Collectible(2010, 195, 'coin'),
+      new Collectible(2110, 195, 'coin'),
+      new Collectible(2220, 185, 'gem'),
+
+      // 7. Upper Floating Sky Islands (Secret High Route Gem & Coins)
+      new Collectible(790, 15, 'coin'),
+      new Collectible(540, 30, 'gem'),
+      new Collectible(330, 90, 'coin'),
+    ];
+  }
+
+  resetCollectibles() {
+    this.collectibles = this.createCollectibles();
+  }
+
+  update(dt, particleSystem) {
+    for (const c of this.collectibles) {
+      c.update(dt, particleSystem);
+    }
   }
 
   draw(ctx) {
+    this.drawPlatforms(ctx);
+    this.drawCollectibles(ctx);
+  }
+
+  drawPlatforms(ctx) {
     for (const plat of this.platforms) {
       // Platform Body
       ctx.fillStyle = CONFIG.colors.platformBody;
@@ -671,6 +1073,12 @@ class World {
     }
   }
 
+  drawCollectibles(ctx) {
+    for (const c of this.collectibles) {
+      c.draw(ctx);
+    }
+  }
+
   drawRoundedRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -687,21 +1095,28 @@ class World {
 }
 
 // =============================================================================
-// 7. GAME ENGINE & LOOP
+// 9. GAME ENGINE & LOOP
 // =============================================================================
 class Game {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.statsDisplay = document.getElementById('statsDisplay');
+    this.scoreDisplay = document.getElementById('scoreDisplay');
 
     this.input = new InputManager();
     this.particleSystem = new ParticleSystem();
+    this.floatingTexts = new FloatingTextSystem();
     this.world = new World();
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
     this.camera.snapTo(this.player.centerX, this.player.centerY);
+
+    this.score = 0;
+    this.collectedCount = 0;
+    this.totalCollectibles = this.world.collectibles.length;
+    this.updateScoreDisplay();
 
     this.respawnCount = 0;
     this.debugMode = false;
@@ -713,6 +1128,18 @@ class Game {
 
     // Start Game Loop
     requestAnimationFrame((time) => this.loop(time));
+  }
+
+  updateScoreDisplay(animate = false) {
+    if (this.scoreDisplay) {
+      this.scoreDisplay.innerHTML = `🪙 Score: ${this.score} &nbsp;|&nbsp; ${this.collectedCount}/${this.totalCollectibles}`;
+      if (animate) {
+        this.scoreDisplay.classList.remove('pop');
+        // Force reflow for CSS animation restart
+        void this.scoreDisplay.offsetWidth;
+        this.scoreDisplay.classList.add('pop');
+      }
+    }
   }
 
   update(dt) {
@@ -728,6 +1155,22 @@ class Game {
 
     // Update Player & Physics
     this.player.update(dt, this.input, this.world.platforms, this.particleSystem);
+
+    // Update Collectibles & Floating Text
+    this.world.update(dt, this.particleSystem);
+    this.floatingTexts.update(dt);
+
+    // Check Collectible Pickups
+    for (const c of this.world.collectibles) {
+      if (c.checkCollision(this.player)) {
+        const val = c.collect(this.particleSystem, this.floatingTexts);
+        if (val > 0) {
+          this.score += val;
+          this.collectedCount++;
+          this.updateScoreDisplay(true);
+        }
+      }
+    }
 
     // Fall-off-the-map detection & respawn
     if (this.player.y > CONFIG.world.deathY) {
@@ -770,10 +1213,16 @@ class Game {
     this.camera.apply(ctx);
 
     // Draw Platforms
-    this.world.draw(ctx);
+    this.world.drawPlatforms(ctx);
+
+    // Draw Collectibles (Coins & Gems)
+    this.world.drawCollectibles(ctx);
 
     // Draw Particles
     this.particleSystem.draw(ctx);
+
+    // Draw Floating Score Popups
+    this.floatingTexts.draw(ctx);
 
     // Draw Player
     this.player.draw(ctx);
@@ -824,6 +1273,15 @@ class Game {
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
 
+    // Collectibles Hitboxes
+    for (const c of this.world.collectibles) {
+      if (!c.collected) {
+        ctx.strokeStyle = c.type === 'gem' ? '#e879f9' : '#eab308';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(c.x, c.currentY, c.width, c.height);
+      }
+    }
+
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
     ctx.beginPath();
@@ -844,10 +1302,10 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 240, 130);
+    ctx.fillRect(16, 60, 240, 150);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 240, 130);
+    ctx.strokeRect(16, 60, 240, 150);
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '11px monospace';
@@ -855,9 +1313,10 @@ class Game {
     ctx.fillStyle = '#f8fafc';
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 160);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 175);
+    ctx.fillText(`Score: ${this.score} (${this.collectedCount}/${this.totalCollectibles})`, 26, 140);
+    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 160);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 180);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 195);
     ctx.restore();
   }
 

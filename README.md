@@ -65,4 +65,14 @@ this.platforms = [
 ```
 
 ### 3. Modifying Character & Colors
-Colors for the sky, player, platforms, and particles can be customized in `CONFIG.colors` in [`game.js`](game.js).
+Colors for the sky, player, platforms, particles, coins, and gems can be customized in `CONFIG.colors` in [`game.js`](game.js).
+
+### 4. Adding / Modifying Collectibles & Score
+Find `createCollectibles()` in the `World` class in [`game.js`](game.js) to add or move coins and gems:
+```javascript
+this.collectibles = [
+  new Collectible(180, 295, 'coin'), // +100 Score, animated gold coin
+  new Collectible(1260, 25, 'gem'),  // +500 Score, rare pulsing purple gem
+];
+```
+Each collectible automatically includes bobbing float animations, 3D rotation / crystal pulsing, collection sparkles, floating score text popups, and real-time HUD counter updates.
