@@ -2877,7 +2877,6 @@ class Game {
       this.triggerRespawn();
     }
 
-<<<<<<< HEAD
     // Timer start trigger on player movement
     if (this.timerState === 'READY') {
       if (
@@ -2901,7 +2900,9 @@ class Game {
       // Check finish line collision
       if (this.checkGoalCollision(this.player, this.goalZone)) {
         this.completeRun();
-=======
+      }
+    }
+
     // Update World (Platforms + Checkpoints)
     this.world.update(dt, this.player, this.particleSystem, this.input, (activatedCheckpoint) => {
       this.currentCheckpoint = activatedCheckpoint;
@@ -2915,7 +2916,6 @@ class Game {
       this.checkpointBanner.timer -= dt;
       if (this.checkpointBanner.timer <= 0) {
         this.checkpointBanner.active = false;
->>>>>>> origin/master
       }
     }
 
@@ -2967,15 +2967,11 @@ class Game {
 
   triggerRespawn() {
     this.respawnCount++;
-<<<<<<< HEAD
     this.resetRun();
-    this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
-=======
     const spawnPos = this.currentSpawnPoint || CONFIG.world.spawnPoint;
     this.player.respawn(spawnPos, this.particleSystem);
     this.updateHUD();
     this.updateHealthUI(true);
->>>>>>> origin/master
   }
 
   render() {
@@ -3188,13 +3184,13 @@ class Game {
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
 
-<<<<<<< HEAD
     // Goal Zone Hitbox
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(this.goalZone.x, this.goalZone.y, this.goalZone.width, this.goalZone.height);
+    if (this.goalZone) {
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(this.goalZone.x, this.goalZone.y, this.goalZone.width, this.goalZone.height);
+    }
 
-=======
     // Hazard Hitboxes
     for (const hazard of this.world.hazards) {
       const hb = hazard.getHitbox();
@@ -3212,16 +3208,18 @@ class Game {
     }
 
     // Lantern Illumination Radius outline
-    const lanternPos = this.player.getLanternWorldPos();
-    const radius = this.player.getLanternRadius();
-    ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
->>>>>>> origin/master
+    if (CONFIG.lighting && CONFIG.lighting.enabled && this.player.getLanternWorldPos) {
+      const lanternPos = this.player.getLanternWorldPos();
+      const radius = this.player.getLanternRadius();
+      ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
     ctx.beginPath();
@@ -3254,35 +3252,20 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-<<<<<<< HEAD
-    ctx.fillRect(16, 60, 240, 150);
+    ctx.fillRect(16, 60, 320, 240);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 240, 150);
-=======
-    ctx.fillRect(16, 60, 320, 200);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 320, 200);
+    ctx.strokeRect(16, 60, 320, 240);
 
     const activeCpName = this.currentCheckpoint ? this.currentCheckpoint.label : 'None';
     const platType = this.player.standingPlatform ? this.player.standingPlatform.type : 'None';
     const platState = this.player.standingPlatform ? this.player.standingPlatform.state : '-';
->>>>>>> origin/master
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 11px monospace';
     ctx.fillText(`DEBUG MODE (F3)`, 26, 80);
 
     ctx.fillStyle = '#f8fafc';
-<<<<<<< HEAD
-    ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 98);
-    ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 116);
-    ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 134);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 152);
-    ctx.fillText(`Timer: ${this.timerState} (${this.runTime.toFixed(2)}s)`, 26, 170);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 188);
-=======
     ctx.font = '11px monospace';
     ctx.fillText(`Pos: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`, 26, 100);
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 116);
@@ -3292,8 +3275,8 @@ class Game {
     ctx.fillText(`Platform: ${platType} [${platState}]`, 26, 180);
     ctx.fillText(`Wall: ${this.player.isTouchingWall} (dir: ${this.player.wallDir}) | Slide: ${this.player.isWallSliding}`, 26, 196);
     ctx.fillText(`Checkpoint: ${activeCpName} | Hazards: ${this.world.hazards.length}`, 26, 212);
-    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 228);
->>>>>>> origin/master
+    ctx.fillText(`Timer: ${this.timerState} (${this.runTime.toFixed(2)}s) | PB: ${this.formatTime(this.bestTime)}`, 26, 228);
+    ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)}) | Particles: ${this.particleSystem.particles.length}`, 26, 244);
     ctx.restore();
   }
 
