@@ -50,6 +50,26 @@ const CONFIG = {
     playerHatBand: '#fbbf24',
     playerHatBrim: '#e11d48',
     particle: '#38bdf8',
+  },
+  lighting: {
+    enabled: true,
+    ambientDarkness: 0.78,   // Ambient darkness intensity outside lantern radius (0.0 = bright, 1.0 = pitch black)
+    ambientColor: '#070b14', // Color tint of the ambient night/shadows
+    lantern: {
+      // Radius r: Illuminates the surroundings by a radius r.
+      // Configured to 5x the player character size (player height: 42px * 5 = 210px).
+      // You can tweak 'baseRadius' or 'radiusMultiplier' below to adjust the illumination size!
+      radiusMultiplier: 5.0,
+      baseRadius: 210,         // Radius r in pixels (5 * player height 42px)
+      flickerSpeed: 8.5,       // Speed of flame flickering
+      flickerAmount: 6.0,      // Pixel variance for organic flame flickers
+      glowColorInner: 'rgba(244, 63, 94, 0.38)',  // Rich pink surroundings illumination
+      glowColorMid: 'rgba(236, 72, 153, 0.20)',   // Soft mid pink ambient aura
+      glowColorOuter: 'rgba(219, 39, 119, 0)',    // Smooth falloff to darkness
+      flameBodyColor: '#db2777',                  // Deep vibrant rose-pink outer flame
+      flameMidColor: '#ec4899',                   // Vivid hot-pink flame body
+      flameCoreColor: '#f472b6',                  // Bright saturated pink flame core (no pure white!)
+    }
   }
 };
 
@@ -191,6 +211,21 @@ class ParticleSystem {
     });
   }
 
+  emitLanternEmber(x, y) {
+    this.emit(x, y, 1, {
+      color: Math.random() > 0.4 ? '#f472b6' : '#fb7185',
+      sizeMin: 1.5,
+      sizeMax: 3.0,
+      speedMin: 15,
+      speedMax: 45,
+      lifeMin: 0.35,
+      lifeMax: 0.65,
+      angleMin: -Math.PI * 0.75,
+      angleMax: -Math.PI * 0.25,
+      gravity: -80, // Gently float upward
+    });
+  }
+
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -244,6 +279,11 @@ class Player {
     this.walkAnimTimer = 0;
     this.blinkTimer = 2.0;
     this.isBlinking = false;
+
+    // Lantern and Pink Flame animation state
+    this.flameTimer = 0;
+    this.lanternSway = 0;
+    this.emberTimer = 0;
   }
 
   respawn(spawnPoint, particleSystem) {
@@ -402,6 +442,43 @@ class Player {
         this.blinkTimer = 2.5 + Math.random() * 3.0;
       }
     }
+
+    // -------------------------------------------------------------------------
+    // 7. Lantern & Flame Dynamics
+    // -------------------------------------------------------------------------
+    this.flameTimer += dt;
+
+    // Smooth inertial sway for the hanging lantern based on movement & velocity
+    const targetSway = -(this.vx / CONFIG.physics.moveSpeed) * 0.3 + (this.isGrounded && Math.abs(this.vx) > 20 ? Math.sin(this.walkAnimTimer) * 0.14 : 0);
+    this.lanternSway += (targetSway - this.lanternSway) * 10 * dt;
+
+    // Emit subtle floating pink embers from the lantern
+    this.emberTimer += dt;
+    if (this.emberTimer >= 0.1) {
+      this.emberTimer = 0;
+      if (particleSystem && CONFIG.lighting.enabled) {
+        const lanternPos = this.getLanternWorldPos();
+        particleSystem.emitLanternEmber(lanternPos.x, lanternPos.y - 8);
+      }
+    }
+  }
+
+  getLanternWorldPos() {
+    // Exact world coordinates of the lantern flame center
+    const handOffsetX = this.facing * (this.width / 2 + 3);
+    const handOffsetY = -this.height * 0.45;
+    const swayOffset = Math.sin(this.lanternSway) * 8;
+    return {
+      x: this.centerX + handOffsetX + swayOffset,
+      y: this.y + this.height + handOffsetY + 8
+    };
+  }
+
+  getLanternRadius() {
+    const base = CONFIG.lighting.lantern.baseRadius || (this.height * CONFIG.lighting.lantern.radiusMultiplier);
+    const flicker = Math.sin(this.flameTimer * CONFIG.lighting.lantern.flickerSpeed) * CONFIG.lighting.lantern.flickerAmount
+                  + Math.cos(this.flameTimer * 14.3) * (CONFIG.lighting.lantern.flickerAmount * 0.4);
+    return Math.max(10, base + flicker);
   }
 
   checkCollision(rect1, rect2) {
@@ -453,6 +530,42 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
+    // 1. Sleek Glassy Capsule Specular (Overall Body Gloss)
+    ctx.save();
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -w / 2 + 2, -h + 2, w - 4, h * 0.45, cornerRadius - 2);
+    const bodyGloss = ctx.createLinearGradient(0, -h + 2, 0, -h * 0.55);
+    bodyGloss.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+    bodyGloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = bodyGloss;
+    ctx.fill();
+
+    // 2. Sleek Dynamic Pink Rim Reflection from Lantern Flame
+    const rimX = this.facing > 0 ? (w / 2 - 2.5) : (-w / 2 + 2.5);
+    const rimGrad = ctx.createLinearGradient(0, -h * 0.85, 0, -h * 0.15);
+    rimGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+    rimGrad.addColorStop(0.4, 'rgba(255, 190, 230, 0.85)'); // Sleek glint facing lantern
+    rimGrad.addColorStop(0.7, 'rgba(236, 72, 153, 0.65)');
+    rimGrad.addColorStop(1, 'rgba(219, 39, 119, 0)');
+
+    ctx.strokeStyle = rimGrad;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(rimX, -h * 0.80);
+    ctx.lineTo(rimX, -h * 0.20);
+    ctx.stroke();
+
+    // Subtle bottom edge bounce light
+    const bounceGrad = ctx.createLinearGradient(0, 0, 0, -6);
+    bounceGrad.addColorStop(0, 'rgba(244, 63, 94, 0.25)');
+    bounceGrad.addColorStop(1, 'rgba(244, 63, 94, 0)');
+    ctx.fillStyle = bounceGrad;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -w / 2 + 2, -6, w - 4, 4, 2);
+    ctx.fill();
+    ctx.restore();
+
     // Procedural Animated Eyes
     if (!this.isBlinking) {
       const eyeLookOffset = this.facing * 3.5;
@@ -491,6 +604,9 @@ class Player {
     // Procedural Animated Hat
     this.drawHat(ctx, w, h);
 
+    // Pink Flame Lantern
+    this.drawLantern(ctx, w, h);
+
     ctx.restore();
   }
 
@@ -515,6 +631,26 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
+    // Sleek specular reflection on top curve of hat brim
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(0, -1, (w / 2) + 4, 2.8, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.stroke();
+
+    // Sleek pink rim reflection on brim forward edge facing lantern
+    const brimRimGrad = ctx.createLinearGradient(0, 0, this.facing * ((w / 2) + 6), 0);
+    brimRimGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+    brimRimGrad.addColorStop(0.6, 'rgba(255, 190, 230, 0.85)');
+    brimRimGrad.addColorStop(1, 'rgba(244, 114, 182, 0.5)');
+    ctx.strokeStyle = brimRimGrad;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.ellipse(this.facing * 2, 0, (w / 2) + 4, 3.8, 0, this.facing > 0 ? -0.6 : Math.PI - 0.8, this.facing > 0 ? 0.8 : Math.PI + 0.6);
+    ctx.stroke();
+    ctx.restore();
+
     // 2. Hat Crown (Stylized Cap / Cone)
     const crownWidth = w * 0.72;
     const crownHeight = 16;
@@ -534,6 +670,25 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
+    // Sleek pink curved specular streak on crown cone facing the lantern
+    ctx.save();
+    const coneSpecGrad = ctx.createLinearGradient(0, -crownHeight, this.facing * (crownWidth / 2), 0);
+    coneSpecGrad.addColorStop(0, 'rgba(255, 210, 240, 0.75)');
+    coneSpecGrad.addColorStop(0.5, 'rgba(244, 114, 182, 0.45)');
+    coneSpecGrad.addColorStop(1, 'rgba(244, 114, 182, 0)');
+    ctx.strokeStyle = coneSpecGrad;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-1 + this.facing * 3, -crownHeight + 1);
+    ctx.quadraticCurveTo(
+      this.facing * (crownWidth * 0.25),
+      -crownHeight * 0.5,
+      this.facing * (crownWidth * 0.38),
+      -1
+    );
+    ctx.stroke();
+    ctx.restore();
+
     // 3. Hat Band (Golden Accent Ribbon)
     ctx.fillStyle = CONFIG.colors.playerHatBand;
     ctx.strokeStyle = '#d97706';
@@ -543,11 +698,185 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
+    // Sleek metallic glint on gold band
+    ctx.save();
+    const bandSpecGrad = ctx.createLinearGradient(-crownWidth / 2, -2.5, crownWidth / 2, -2.5);
+    bandSpecGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    bandSpecGrad.addColorStop(0.35 + this.facing * 0.15, 'rgba(255, 255, 255, 0.85)');
+    bandSpecGrad.addColorStop(0.50 + this.facing * 0.15, 'rgba(254, 240, 138, 0.9)');
+    bandSpecGrad.addColorStop(0.65 + this.facing * 0.15, 'rgba(255, 180, 220, 0.6)');
+    bandSpecGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = bandSpecGrad;
+    this.drawRoundedRect(ctx, -crownWidth / 2 + 2, -4, crownWidth - 4, 3, 1);
+    ctx.fill();
+    ctx.restore();
+
     // 4. Pom-pom / Golden Star on Top of Hat
     ctx.fillStyle = '#fef08a';
     ctx.beginPath();
     ctx.arc(-2 + this.facing * 3, -crownHeight, 3.5, 0, Math.PI * 2);
     ctx.fill();
+
+    // Sleek glint on star
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-2 + this.facing * 3 - 1, -crownHeight - 1, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  drawLantern(ctx, w, h) {
+    ctx.save();
+
+    // Hand/arm attachment point on the forward side of the player
+    const handX = this.facing * (w / 2 + 1);
+    const handY = -h * 0.45;
+
+    // Small player arm holding the lantern
+    ctx.fillStyle = '#38bdf8';
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(handX - this.facing * 1.5, handY + 1, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Pivot at the hand attachment
+    ctx.translate(handX, handY);
+    ctx.rotate(this.lanternSway);
+
+    // Metal hook / chain hanging down
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 6);
+    ctx.stroke();
+
+    // Shift to lantern housing
+    ctx.translate(0, 6);
+
+    const lanternW = 13;
+    const lanternH = 17;
+
+    // 1. Top ring (brass)
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, -lanternH / 2 - 2, 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 2. Top cap / roof (dark iron with brass trim)
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-lanternW / 2 - 2, -lanternH / 2 + 2);
+    ctx.lineTo(-lanternW / 4, -lanternH / 2 - 1.5);
+    ctx.lineTo(lanternW / 4, -lanternH / 2 - 1.5);
+    ctx.lineTo(lanternW / 2 + 2, -lanternH / 2 + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Glass Chamber (dark transparent background so the pink flame is clearly visible)
+    const glassX = -lanternW / 2;
+    const glassY = -lanternH / 2 + 2;
+    const glassW = lanternW;
+    const glassH = lanternH - 4;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+    ctx.fillRect(glassX, glassY, glassW, glassH);
+
+    // Subtle dark-pink inner glass hue
+    const glassGlow = ctx.createRadialGradient(0, glassY + glassH * 0.6, 1, 0, glassY + glassH * 0.6, lanternW);
+    glassGlow.addColorStop(0, 'rgba(244, 63, 94, 0.30)');
+    glassGlow.addColorStop(0.7, 'rgba(219, 39, 119, 0.10)');
+    glassGlow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = glassGlow;
+    ctx.fillRect(glassX, glassY, glassW, glassH);
+
+    // 4. Animated Dancing Pink Flame (Rich saturated pink throughout - NO pure white)
+    const time = this.flameTimer;
+    const flicker1 = Math.sin(time * 16.0) * 1.2 + Math.cos(time * 23.0) * 0.6;
+    const flameWobble = Math.sin(time * 14.0) * 1.4;
+    const flameBaseY = glassY + glassH - 2;
+    const flameHeight = 9.0 + flicker1;
+
+    // Small wick base
+    ctx.fillStyle = '#831843';
+    ctx.beginPath();
+    ctx.arc(0, flameBaseY + 0.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer Pink Flame (Deep magenta-rose)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameBodyColor;
+    ctx.beginPath();
+    ctx.moveTo(-3.5, flameBaseY);
+    ctx.quadraticCurveTo(-4.5 + flameWobble * 0.4, flameBaseY - flameHeight * 0.45, flameWobble, flameBaseY - flameHeight);
+    ctx.quadraticCurveTo(4.5 + flameWobble * 0.4, flameBaseY - flameHeight * 0.45, 3.5, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Secondary side flame tongue for authentic flickering fire movement
+    const tongueWobble = Math.sin(time * 20.0) * 1.1;
+    ctx.fillStyle = CONFIG.lighting.lantern.flameMidColor;
+    ctx.beginPath();
+    ctx.moveTo(-2.5, flameBaseY);
+    ctx.quadraticCurveTo(-3.2 + tongueWobble, flameBaseY - flameHeight * 0.35, -1.0 + tongueWobble, flameBaseY - flameHeight * 0.7);
+    ctx.quadraticCurveTo(-0.5, flameBaseY - flameHeight * 0.35, 1.5, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mid Flame (Vivid hot pink body)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameMidColor;
+    ctx.beginPath();
+    ctx.moveTo(-2.2, flameBaseY);
+    ctx.quadraticCurveTo(-2.8 + flameWobble * 0.3, flameBaseY - flameHeight * 0.4, flameWobble * 0.6, flameBaseY - flameHeight * 0.82);
+    ctx.quadraticCurveTo(2.8 + flameWobble * 0.3, flameBaseY - flameHeight * 0.4, 2.2, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Inner Flame Heart (Bright vibrant saturated pink - NOT white!)
+    ctx.fillStyle = CONFIG.lighting.lantern.flameCoreColor;
+    ctx.beginPath();
+    ctx.moveTo(-1.2, flameBaseY);
+    ctx.quadraticCurveTo(-1.6 + flameWobble * 0.2, flameBaseY - flameHeight * 0.28, flameWobble * 0.3, flameBaseY - flameHeight * 0.55);
+    ctx.quadraticCurveTo(1.6 + flameWobble * 0.2, flameBaseY - flameHeight * 0.28, 1.2, flameBaseY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 5. Metal Cage Struts
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-lanternW / 2, glassY);
+    ctx.lineTo(-lanternW / 2, glassY + glassH);
+    ctx.moveTo(lanternW / 2, glassY);
+    ctx.lineTo(lanternW / 2, glassY + glassH);
+    ctx.moveTo(-lanternW / 5, glassY);
+    ctx.lineTo(-lanternW / 5, glassY + glassH);
+    ctx.moveTo(lanternW / 5, glassY);
+    ctx.lineTo(lanternW / 5, glassY + glassH);
+    ctx.stroke();
+
+    // 6. Metal Base
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    this.drawRoundedRect(ctx, -lanternW / 2 - 1.5, glassY + glassH, lanternW + 3, 3, 1);
+    ctx.fill();
+    ctx.stroke();
+
+    // Subtle clean glass reflection line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-lanternW / 2 + 1.5, glassY + 2);
+    ctx.lineTo(-lanternW / 2 + 1.5, glassY + glassH - 2);
+    ctx.stroke();
 
     ctx.restore();
   }
@@ -643,27 +972,108 @@ class World {
     ];
   }
 
-  draw(ctx) {
+  draw(ctx, player) {
+    const lanternPos = player ? player.getLanternWorldPos() : null;
+    const lanternRadius = player ? player.getLanternRadius() : 0;
+
     for (const plat of this.platforms) {
-      // Platform Body
-      ctx.fillStyle = CONFIG.colors.platformBody;
+      // 1. Platform Body (Sleek modern beveled gradient styling)
+      const bodyGrad = ctx.createLinearGradient(plat.x, plat.y, plat.x, plat.y + plat.height);
+      bodyGrad.addColorStop(0, '#243247');
+      bodyGrad.addColorStop(1, '#131b2b');
+      ctx.fillStyle = bodyGrad;
       ctx.strokeStyle = CONFIG.colors.platformBorder;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
 
       ctx.beginPath();
       this.drawRoundedRect(ctx, plat.x, plat.y, plat.width, plat.height, 6);
       ctx.fill();
       ctx.stroke();
 
-      // Bright top edge highlight (Grass/Energy surface)
-      ctx.fillStyle = CONFIG.colors.platformTop;
+      // 2. Bright top edge surface strip (Grass/Energy surface)
+      const topGrad = ctx.createLinearGradient(plat.x, plat.y, plat.x, plat.y + 6);
+      topGrad.addColorStop(0, '#86efac');
+      topGrad.addColorStop(1, CONFIG.colors.platformTop);
+      ctx.fillStyle = topGrad;
       ctx.beginPath();
       this.drawRoundedRect(ctx, plat.x + 2, plat.y + 1, plat.width - 4, 6, 3);
       ctx.fill();
 
+      // Sleek top-edge bevel shine line (ambient gloss)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plat.x + 5, plat.y + 1.5);
+      ctx.lineTo(plat.x + plat.width - 5, plat.y + 1.5);
+      ctx.stroke();
+
+      // 3. Dynamic Sleek Pink Specular Reflection from Lantern Flame
+      if (lanternPos && lanternRadius > 0) {
+        // Calculate closest point on top platform edge to lantern
+        const closestX = Math.max(plat.x, Math.min(lanternPos.x, plat.x + plat.width));
+        const closestY = plat.y;
+        const dx = closestX - lanternPos.x;
+        const dy = closestY - lanternPos.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < lanternRadius) {
+          const normDist = 1 - (dist / lanternRadius);
+          const intensity = Math.pow(normDist, 1.3);
+
+          // Specular reflection width and position on platform top
+          const specWidth = Math.min(plat.width - 4, Math.max(50, normDist * 160 + 40));
+          const specStartX = Math.max(plat.x + 2, closestX - specWidth / 2);
+          const specEndX = Math.min(plat.x + plat.width - 2, closestX + specWidth / 2);
+
+          if (specEndX > specStartX) {
+            ctx.save();
+            // Sleek glossy linear specular highlight along the top surface
+            const specGrad = ctx.createLinearGradient(specStartX, plat.y, specEndX, plat.y);
+            specGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+            specGrad.addColorStop(0.3, `rgba(244, 114, 182, ${0.45 * intensity})`);
+            specGrad.addColorStop(0.5, `rgba(255, 210, 240, ${0.90 * intensity})`); // Sleek bright glint
+            specGrad.addColorStop(0.7, `rgba(244, 114, 182, ${0.45 * intensity})`);
+            specGrad.addColorStop(1, 'rgba(244, 114, 182, 0)');
+
+            ctx.fillStyle = specGrad;
+            ctx.beginPath();
+            this.drawRoundedRect(ctx, specStartX, plat.y + 0.8, specEndX - specStartX, 3.5, 1.5);
+            ctx.fill();
+
+            // Sleek mirror-like top razor edge highlight
+            ctx.strokeStyle = specGrad;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(specStartX, plat.y + 1);
+            ctx.lineTo(specEndX, plat.y + 1);
+            ctx.stroke();
+
+            // Sleek subtle side bevel bounce if lantern is on the side of the platform
+            const isLeft = lanternPos.x < plat.x;
+            const isRight = lanternPos.x > plat.x + plat.width;
+            if ((isLeft || isRight) && lanternPos.y > plat.y - 20 && lanternPos.y < plat.y + plat.height + 40) {
+              const sideX = isLeft ? plat.x + 1 : plat.x + plat.width - 1;
+              const sideGrad = ctx.createLinearGradient(sideX, plat.y, sideX, plat.y + plat.height);
+              sideGrad.addColorStop(0, `rgba(255, 180, 220, ${0.7 * intensity})`);
+              sideGrad.addColorStop(0.5, `rgba(244, 114, 182, ${0.4 * intensity})`);
+              sideGrad.addColorStop(1, 'rgba(219, 39, 119, 0)');
+
+              ctx.strokeStyle = sideGrad;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(sideX, plat.y + 3);
+              ctx.lineTo(sideX, plat.y + plat.height - 3);
+              ctx.stroke();
+            }
+
+            ctx.restore();
+          }
+        }
+      }
+
       // Subtle label on key platforms
       if (plat.label) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(plat.label, plat.x + plat.width / 2, plat.y + plat.height - 10);
@@ -702,6 +1112,12 @@ class Game {
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
     this.camera.snapTo(this.player.centerX, this.player.centerY);
+
+    // Offscreen lighting buffer for darkness & lantern glow rendering
+    this.lightCanvas = document.createElement('canvas');
+    this.lightCanvas.width = CONFIG.canvas.width;
+    this.lightCanvas.height = CONFIG.canvas.height;
+    this.lightCtx = this.lightCanvas.getContext('2d');
 
     this.respawnCount = 0;
     this.debugMode = false;
@@ -769,8 +1185,8 @@ class Game {
     // -------------------------------------------------------------------------
     this.camera.apply(ctx);
 
-    // Draw Platforms
-    this.world.draw(ctx);
+    // Draw Platforms (with sleek dynamic lantern reflections)
+    this.world.draw(ctx, this.player);
 
     // Draw Particles
     this.particleSystem.draw(ctx);
@@ -786,11 +1202,81 @@ class Game {
     this.camera.restore(ctx);
 
     // -------------------------------------------------------------------------
-    // 3. Screen Space UI & HUD
+    // 3. Darkness & Lantern Illumination Layer Pass
+    // -------------------------------------------------------------------------
+    if (CONFIG.lighting.enabled) {
+      this.renderLighting(ctx);
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. Screen Space UI & HUD
     // -------------------------------------------------------------------------
     if (this.debugMode) {
       this.drawDebugOverlay(ctx);
     }
+  }
+
+  renderLighting(ctx) {
+    const lightCtx = this.lightCtx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    // 1. Clear offscreen lighting canvas
+    lightCtx.clearRect(0, 0, w, h);
+
+    // 2. Fill ambient darkness overlay
+    lightCtx.fillStyle = `rgba(7, 11, 20, ${CONFIG.lighting.ambientDarkness})`;
+    lightCtx.fillRect(0, 0, w, h);
+
+    // 3. Apply Camera transform and punch out light radius around lantern
+    this.camera.apply(lightCtx);
+    lightCtx.globalCompositeOperation = 'destination-out';
+
+    const lanternPos = this.player.getLanternWorldPos();
+    const radius = this.player.getLanternRadius();
+
+    // Smooth radial gradient cutout for natural light falloff
+    const maskGrad = lightCtx.createRadialGradient(
+      lanternPos.x, lanternPos.y, 0,
+      lanternPos.x, lanternPos.y, radius
+    );
+    maskGrad.addColorStop(0, 'rgba(0, 0, 0, 1.0)');
+    maskGrad.addColorStop(0.35, 'rgba(0, 0, 0, 0.95)');
+    maskGrad.addColorStop(0.65, 'rgba(0, 0, 0, 0.60)');
+    maskGrad.addColorStop(0.85, 'rgba(0, 0, 0, 0.25)');
+    maskGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+    lightCtx.fillStyle = maskGrad;
+    lightCtx.beginPath();
+    lightCtx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+    lightCtx.fill();
+
+    lightCtx.globalCompositeOperation = 'source-over';
+    this.camera.restore(lightCtx);
+
+    // 4. Draw the darkness mask onto the main screen
+    ctx.drawImage(this.lightCanvas, 0, 0);
+
+    // 5. Draw magical pink ambient light wash over the illuminated area & platforms
+    this.camera.apply(ctx);
+    ctx.save();
+
+    const glowGrad = ctx.createRadialGradient(
+      lanternPos.x, lanternPos.y, 0,
+      lanternPos.x, lanternPos.y, radius
+    );
+    glowGrad.addColorStop(0, CONFIG.lighting.lantern.glowColorInner);
+    glowGrad.addColorStop(0.35, CONFIG.lighting.lantern.glowColorMid);
+    glowGrad.addColorStop(0.70, 'rgba(219, 39, 119, 0.08)');
+    glowGrad.addColorStop(1.0, CONFIG.lighting.lantern.glowColorOuter);
+
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    this.camera.restore(ctx);
   }
 
   drawParallaxStars(ctx) {
@@ -824,6 +1310,17 @@ class Game {
     ctx.lineWidth = 1;
     ctx.strokeRect(this.player.x, this.player.y, this.player.width, this.player.height);
 
+    // Lantern Illumination Radius outline
+    const lanternPos = this.player.getLanternWorldPos();
+    const radius = this.player.getLanternRadius();
+    ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(lanternPos.x, lanternPos.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     // Velocity vector line
     ctx.strokeStyle = '#eab308';
     ctx.beginPath();
@@ -844,10 +1341,10 @@ class Game {
   drawDebugOverlay(ctx) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(16, 60, 240, 130);
+    ctx.fillRect(16, 60, 240, 150);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
-    ctx.strokeRect(16, 60, 240, 130);
+    ctx.strokeRect(16, 60, 240, 150);
 
     ctx.fillStyle = '#38bdf8';
     ctx.font = '11px monospace';
@@ -857,7 +1354,8 @@ class Game {
     ctx.fillText(`Vel: (${Math.round(this.player.vx)}, ${Math.round(this.player.vy)})`, 26, 120);
     ctx.fillText(`Grounded: ${this.player.isGrounded} | Coyote: ${this.player.coyoteTimer.toFixed(2)}s`, 26, 140);
     ctx.fillText(`Camera: (${Math.round(this.camera.x)}, ${Math.round(this.camera.y)})`, 26, 160);
-    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 175);
+    ctx.fillText(`Lantern Radius: ${Math.round(this.player.getLanternRadius())}px (5x)`, 26, 180);
+    ctx.fillText(`Active Particles: ${this.particleSystem.particles.length}`, 26, 195);
     ctx.restore();
   }
 
