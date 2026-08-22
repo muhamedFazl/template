@@ -253,8 +253,8 @@ class SoundEffectManager {
       const gain = this.ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(987.77, now); // B5
-      osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+      osc.frequency.setValueAtTime(987.77, now);
+      osc.frequency.setValueAtTime(1318.51, now + 0.08);
 
       gain.gain.setValueAtTime(0.15, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
@@ -2054,13 +2054,11 @@ class Player {
     const h = this.height;
     const cornerRadius = 8;
 
-    // Drop shadow
     ctx.fillStyle = CONFIG.colors.playerGlow;
     ctx.beginPath();
     ctx.ellipse(0, 0, w * 0.6, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body Gradient
     const bodyGradient = ctx.createLinearGradient(-w / 2, -h, w / 2, 0);
     bodyGradient.addColorStop(0, '#67e8f9');
     bodyGradient.addColorStop(1, CONFIG.colors.playerBody);
@@ -2154,7 +2152,6 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
-    // Brim sleek reflection
     ctx.save();
     const brimRimGrad = ctx.createLinearGradient(0, 0, this.facing * ((w / 2) + 6), 0);
     brimRimGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
@@ -2209,7 +2206,6 @@ class Player {
     const handX = this.facing * (w / 2 + 1);
     const handY = -h * 0.45;
 
-    // Small arm holding lantern
     ctx.fillStyle = '#38bdf8';
     ctx.strokeStyle = '#0284c7';
     ctx.lineWidth = 1.5;
@@ -2218,11 +2214,9 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
-    // Pivot at hand attachment
     ctx.translate(handX, handY);
     ctx.rotate(this.lanternSway);
 
-    // Hanging chain
     ctx.strokeStyle = '#64748b';
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -2235,14 +2229,12 @@ class Player {
     const lanternW = 13;
     const lanternH = 17;
 
-    // Brass top ring
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(0, -lanternH / 2 - 2, 2.5, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Top cap
     ctx.fillStyle = '#0f172a';
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1.2;
@@ -2255,7 +2247,6 @@ class Player {
     ctx.fill();
     ctx.stroke();
 
-    // Glass Chamber
     const glassX = -lanternW / 2;
     const glassY = -lanternH / 2 + 2;
     const glassW = lanternW;
@@ -2271,20 +2262,17 @@ class Player {
     ctx.fillStyle = glassGlow;
     ctx.fillRect(glassX, glassY, glassW, glassH);
 
-    // Multi-Layer Dancing Pink Flame
     const time = this.flameTimer;
     const flicker1 = Math.sin(time * 16.0) * 1.2 + Math.cos(time * 23.0) * 0.6;
     const flameWobble = Math.sin(time * 14.0) * 1.4;
     const flameBaseY = glassY + glassH - 2;
     const flameHeight = 9.0 + flicker1;
 
-    // Wick
     ctx.fillStyle = '#831843';
     ctx.beginPath();
     ctx.arc(0, flameBaseY + 0.5, 1.8, 0, Math.PI * 2);
     ctx.fill();
 
-    // Outer Pink Flame (Deep magenta-rose)
     ctx.fillStyle = CONFIG.lighting.lantern.flameBodyColor;
     ctx.beginPath();
     ctx.moveTo(-3.5, flameBaseY);
@@ -2293,7 +2281,6 @@ class Player {
     ctx.closePath();
     ctx.fill();
 
-    // Mid Flame (Hot pink body)
     ctx.fillStyle = CONFIG.lighting.lantern.flameMidColor;
     ctx.beginPath();
     ctx.moveTo(-2.2, flameBaseY);
@@ -2302,7 +2289,6 @@ class Player {
     ctx.closePath();
     ctx.fill();
 
-    // Inner Flame Heart (Saturated pink)
     ctx.fillStyle = CONFIG.lighting.lantern.flameCoreColor;
     ctx.beginPath();
     ctx.moveTo(-1.2, flameBaseY);
@@ -2311,7 +2297,6 @@ class Player {
     ctx.closePath();
     ctx.fill();
 
-    // Cage Struts
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -2325,7 +2310,6 @@ class Player {
     ctx.lineTo(lanternW / 5, glassY + glassH);
     ctx.stroke();
 
-    // Metal Base
     ctx.fillStyle = '#0f172a';
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1;
@@ -2418,142 +2402,382 @@ class Camera {
 }
 
 // =============================================================================
-// 12. CHECKPOINT SYSTEM
+// 12. CHECKPOINT SYSTEM (AUTHENTIC PEDESTAL, SWALLOWTAIL CLOTH & PROMPT BADGE)
 // =============================================================================
 class Checkpoint {
-  constructor(config) {
-    this.id = config.id;
-    this.x = config.x;
-    this.y = config.y;
-    this.label = config.label || 'Checkpoint';
-    this.isActive = !!config.isActive;
-    this.isBaseCamp = !!config.isBaseCamp;
+  constructor(x, y, label, isDefault = false) {
+    this.x = x;
+    this.y = y;
+    this.label = label || 'Checkpoint';
+    this.isDefault = isDefault;
+    this.isActive = isDefault;
+    this.poleHeight = 68;
+    this.flagWidth = 36;
+    this.flagHeight = 22;
 
-    this.flagWidth = 28;
-    this.flagHeight = 18;
-    this.poleHeight = 44;
+    this.width = 64;
+    this.height = this.poleHeight + 16;
+    this.isPlayerInRange = false;
+
+    this.waveTimer = Math.random() * 10;
+    this.flagRaiseProgress = isDefault ? 1.0 : 0.0;
+    this.glowTimer = Math.random() * Math.PI * 2;
+    this.ambientTimer = 0;
 
     this.spawnPoint = {
-      x: this.x + 8,
-      y: this.y - 44,
+      x: this.x - 15,
+      y: this.y - 42,
     };
-
-    this.triggerBounds = {
-      x: this.x - 30,
-      y: this.y - 50,
-      width: 76,
-      height: 60,
-    };
-
-    this.waveTimer = Math.random() * Math.PI * 2;
-    this.ambientTimer = 0;
-    this.isNearPlayer = false;
-    this.promptScale = 0;
   }
 
-  update(dt, player, particleSystem) {
-    this.waveTimer += dt * 3.5;
+  get triggerBounds() {
+    return {
+      x: this.x - this.width / 2,
+      y: this.y - this.height,
+      width: this.width,
+      height: this.height,
+    };
+  }
 
-    this.isNearPlayer = (
-      player.x < this.triggerBounds.x + this.triggerBounds.width &&
-      player.x + player.width > this.triggerBounds.x &&
-      player.y < this.triggerBounds.y + this.triggerBounds.height &&
-      player.y + player.height > this.triggerBounds.y
+  checkCollision(player) {
+    const bounds = this.triggerBounds;
+    return (
+      player.x < bounds.x + bounds.width &&
+      player.x + player.width > bounds.x &&
+      player.y < bounds.y + bounds.height &&
+      player.y + player.height > bounds.y
     );
+  }
 
-    const targetPromptScale = (this.isNearPlayer && !this.isActive) ? 1 : 0;
-    this.promptScale += (targetPromptScale - this.promptScale) * 10 * dt;
-
-    if (this.isActive && particleSystem) {
-      this.ambientTimer += dt;
-      if (this.ambientTimer >= 0.25) {
-        this.ambientTimer = 0;
-        particleSystem.emitCheckpointAmbient(this.x + 4, this.y - 36);
+  activate(particleSystem) {
+    if (!this.isActive) {
+      this.isActive = true;
+      if (particleSystem) {
+        particleSystem.emitCheckpointSparkles(this.x + 16, this.y - this.poleHeight + 15);
       }
     }
   }
 
-  activate(particleSystem) {
-    if (this.isActive) return false;
-    this.isActive = true;
-    if (particleSystem) {
-      particleSystem.emitCheckpointSparkles(this.x + 4, this.y - 34);
-    }
-    return true;
+  deactivate() {
+    this.isActive = false;
   }
 
-  draw(ctx) {
+  update(dt, player, particleSystem, input) {
+    this.waveTimer += dt * 4.5;
+    this.glowTimer += dt * 3.0;
+
+    this.isPlayerInRange = this.checkCollision(player);
+
+    if (this.isActive) {
+      if (this.flagRaiseProgress < 1.0) {
+        this.flagRaiseProgress = Math.min(1.0, this.flagRaiseProgress + dt * 2.4);
+      }
+
+      this.ambientTimer += dt;
+      if (this.ambientTimer > 0.25) {
+        this.ambientTimer = 0;
+        if (Math.random() < 0.65 && particleSystem) {
+          particleSystem.emitCheckpointAmbient(this.x + 8, this.y - this.poleHeight + 8);
+        }
+      }
+    } else {
+      if (this.flagRaiseProgress > 0.15) {
+        this.flagRaiseProgress = Math.max(0.15, this.flagRaiseProgress - dt * 1.5);
+      }
+
+      if (this.isPlayerInRange && input && input.interactJustPressed) {
+        this.activate(particleSystem);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  draw(ctx, player) {
     ctx.save();
-    const poleX = this.x + 4;
-    const poleBaseY = this.y;
-    const poleTopY = this.y - this.poleHeight;
 
-    ctx.fillStyle = '#334155';
+    const isNear = player && Math.hypot(player.centerX - this.x, player.centerY - (this.y - 30)) < 180;
+    const pulse = Math.sin(this.glowTimer) * 0.5 + 0.5;
+
+    // 1. Ground Light Aura & Pedestal Shadow
     ctx.beginPath();
-    ctx.ellipse(poleX, poleBaseY, 7, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.x, this.y, 22, 6, 0, 0, Math.PI * 2);
+    if (this.isActive) {
+      ctx.fillStyle = `rgba(16, 185, 129, ${0.25 + pulse * 0.2})`;
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 14 + pulse * 8;
+    } else if (this.isPlayerInRange) {
+      ctx.fillStyle = `rgba(56, 189, 248, ${0.2 + pulse * 0.15})`;
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 10 + pulse * 5;
+    } else {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = 0;
+    }
     ctx.fill();
+    ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2.5;
+    // 2. Stepped Base Pedestal (Layered Metallic Plinth)
+    const baseGradient = ctx.createLinearGradient(this.x - 14, this.y - 6, this.x + 14, this.y);
+    baseGradient.addColorStop(0, '#334155');
+    baseGradient.addColorStop(0.5, '#475569');
+    baseGradient.addColorStop(1, '#1e293b');
+
+    ctx.fillStyle = baseGradient;
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1;
+
     ctx.beginPath();
-    ctx.moveTo(poleX, poleBaseY);
-    ctx.lineTo(poleX, poleTopY);
+    this.drawRoundedRect(ctx, this.x - 14, this.y - 4, 28, 5, 2);
+    ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = this.isActive ? '#fbbf24' : '#cbd5e1';
     ctx.beginPath();
-    ctx.arc(poleX, poleTopY, 3.5, 0, Math.PI * 2);
+    this.drawRoundedRect(ctx, this.x - 9, this.y - 8, 18, 5, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Central base emitter core
+    ctx.fillStyle = this.isActive ? '#10b981' : (this.isPlayerInRange ? '#38bdf8' : '#64748b');
+    if (this.isActive || this.isPlayerInRange) {
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 8;
+    }
+    ctx.beginPath();
+    ctx.arc(this.x, this.y - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 3. Flag Pole
+    const poleTopY = this.y - this.poleHeight;
+    const poleGradient = ctx.createLinearGradient(this.x - 2, 0, this.x + 2, 0);
+    poleGradient.addColorStop(0, '#cbd5e1');
+    poleGradient.addColorStop(0.5, '#f8fafc');
+    poleGradient.addColorStop(1, '#64748b');
+
+    ctx.fillStyle = poleGradient;
+    ctx.fillRect(this.x - 2, poleTopY, 4, this.poleHeight - 5);
+
+    // Pole decorative brass rings
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(this.x - 3, poleTopY + 8, 6, 2);
+    ctx.fillRect(this.x - 3, this.y - 12, 6, 2);
+
+    // 4. Pole Top Finial (Glowing Golden Finial Orb)
+    ctx.fillStyle = this.isActive ? '#fde047' : (this.isPlayerInRange ? '#7dd3fc' : '#94a3b8');
+    if (this.isActive) {
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 14 + pulse * 6;
+    } else if (this.isPlayerInRange) {
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 10 + pulse * 5;
+    }
+    ctx.beginPath();
+    ctx.arc(this.x, poleTopY - 2, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Finial shine highlight
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(this.x - 1.5, poleTopY - 3.5, 1.8, 0, Math.PI * 2);
     ctx.fill();
 
-    const flagColor = this.isActive ? CONFIG.colors.checkpointActive : CONFIG.colors.checkpointInactive;
-    const segments = 6;
-    const segW = this.flagWidth / segments;
+    // 5. Procedural Animated Waving Cloth Flag
+    const minFlagY = this.y - 28;
+    const maxFlagY = poleTopY + 4;
+    const currentFlagY = minFlagY + (maxFlagY - minFlagY) * this.flagRaiseProgress;
 
-    ctx.fillStyle = flagColor;
-    ctx.beginPath();
-    ctx.moveTo(poleX, poleTopY + 2);
+    const flagH = this.flagHeight;
+    const flagW = this.flagWidth;
+
+    ctx.save();
+    ctx.translate(this.x + 2, currentFlagY);
+
+    const segments = 6;
+    const segWidth = flagW / segments;
+    const topPoints = [];
+    const bottomPoints = [];
 
     for (let i = 0; i <= segments; i++) {
-      const segX = poleX + i * segW;
-      const wave = Math.sin(this.waveTimer + i * 0.9) * (2 + i * 0.6);
-      ctx.lineTo(segX, poleTopY + 2 + wave);
+      const segX = i * segWidth;
+      const waveFactor = i / segments;
+      const wave = Math.sin(this.waveTimer + i * 0.9) * (4.5 * waveFactor);
+      const waveYOffset = Math.cos(this.waveTimer * 0.8 + i * 0.6) * (1.5 * waveFactor);
+
+      topPoints.push({ x: segX, y: wave + waveYOffset });
+      const taper = i === segments ? flagH * 0.15 : 0;
+      bottomPoints.push({ x: segX, y: flagH - taper + wave * 0.85 + waveYOffset });
     }
 
-    for (let i = segments; i >= 0; i--) {
-      const segX = poleX + i * segW;
-      const wave = Math.sin(this.waveTimer + i * 0.9) * (2 + i * 0.6);
-      ctx.lineTo(segX, poleTopY + 2 + this.flagHeight + wave);
+    // Flag Gradient
+    const flagGradient = ctx.createLinearGradient(0, 0, flagW, flagH);
+    if (this.isActive) {
+      flagGradient.addColorStop(0, '#059669');
+      flagGradient.addColorStop(0.5, '#10b981');
+      flagGradient.addColorStop(1, '#34d399');
+      ctx.shadowColor = 'rgba(16, 185, 129, 0.65)';
+      ctx.shadowBlur = 12;
+    } else {
+      flagGradient.addColorStop(0, '#be123c');
+      flagGradient.addColorStop(0.6, '#e11d48');
+      flagGradient.addColorStop(1, '#f43f5e');
+      ctx.shadowBlur = 0;
     }
 
+    ctx.beginPath();
+    ctx.moveTo(topPoints[0].x, topPoints[0].y);
+    for (let i = 1; i <= segments; i++) {
+      const prev = topPoints[i - 1];
+      const curr = topPoints[i];
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    }
+    ctx.lineTo(topPoints[segments].x, topPoints[segments].y);
+
+    // End swallowtail pennant notch
+    ctx.lineTo(flagW - 6, (topPoints[segments].y + bottomPoints[segments].y) / 2);
+
+    ctx.lineTo(bottomPoints[segments].x, bottomPoints[segments].y);
+    for (let i = segments - 1; i >= 0; i--) {
+      const prev = bottomPoints[i + 1];
+      const curr = bottomPoints[i];
+      const midX = (prev.x + curr.x) / 2;
+      const midY = (prev.y + curr.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    }
     ctx.closePath();
+
+    ctx.fillStyle = flagGradient;
     ctx.fill();
 
-    if (this.promptScale > 0.05) {
-      ctx.save();
-      const promptX = poleX + 16;
-      const promptY = poleTopY - 14;
+    // Flag border trim
+    ctx.strokeStyle = this.isActive ? '#fbbf24' : '#fda4af';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
 
-      ctx.translate(promptX, promptY);
-      ctx.scale(this.promptScale, this.promptScale);
+    // Emblem in middle of flag
+    const emblemWave = Math.sin(this.waveTimer + 1.2) * 2;
+    const emblemX = flagW * 0.42;
+    const emblemY = flagH * 0.5 + emblemWave;
 
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1.5;
+    ctx.fillStyle = this.isActive ? '#fef08a' : '#ffe4e6';
+    ctx.beginPath();
+    if (this.isActive) {
+      ctx.moveTo(emblemX, emblemY - 5);
+      ctx.lineTo(emblemX + 4, emblemY);
+      ctx.lineTo(emblemX, emblemY + 5);
+      ctx.lineTo(emblemX - 4, emblemY);
+      ctx.closePath();
+    } else {
+      ctx.arc(emblemX, emblemY, 3.5, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    ctx.restore();
+
+    // 6. Floating Label & Key Prompt
+    const labelY = poleTopY - 20;
+    ctx.save();
+
+    if (this.isActive) {
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const tagText = `🚩 ${this.label}`;
+      const metrics = ctx.measureText(tagText);
+      const bgW = metrics.width + 18;
+      const bgH = 22;
+
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.92)';
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.roundRect(-24, -12, 48, 24, 6);
+      this.drawRoundedRect(ctx, this.x - bgW / 2, labelY - bgH / 2, bgW, bgH, 11);
       ctx.fill();
       ctx.stroke();
 
+      ctx.fillStyle = '#a7f3d0';
+      ctx.fillText(tagText, this.x, labelY + 4);
+    } else if (this.isPlayerInRange) {
+      const bounce = Math.sin(this.glowTimer * 2.5) * 2.5;
+      const promptY = labelY + bounce;
+
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      const promptText = `CLAIM CHECKPOINT`;
+      const textMetrics = ctx.measureText(promptText);
+      const bgW = textMetrics.width + 38;
+      const bgH = 26;
+
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.65)';
+      ctx.shadowBlur = 12 + pulse * 6;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, this.x - bgW / 2, promptY - bgH / 2, bgW, bgH, 13);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const kbdX = this.x - bgW / 2 + 5;
+      const kbdY = promptY - 9;
       ctx.fillStyle = '#38bdf8';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, kbdX, kbdY, 18, 18, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#0f172a';
       ctx.font = 'bold 11px monospace';
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('[F]', 0, 0);
+      ctx.fillText('F', kbdX + 9, kbdY + 13);
 
-      ctx.restore();
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(promptText, kbdX + 24, promptY + 3.5);
+    } else if (isNear) {
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const tagText = `${this.label}`;
+      const metrics = ctx.measureText(tagText);
+      const bgW = metrics.width + 16;
+      const bgH = 20;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      this.drawRoundedRect(ctx, this.x - bgW / 2, labelY - bgH / 2, bgW, bgH, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(tagText, this.x, labelY + 4);
     }
 
     ctx.restore();
+    ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
   }
 }
 
@@ -2701,13 +2925,13 @@ class World {
     // Collectibles (Coins & Gems)
     this.collectibles = this.createCollectibles();
 
-    // Interactive Checkpoints
+    // Authentic Checkpoints
     this.checkpoints = [
-      new Checkpoint({ id: 'base', x: 120, y: 340, label: 'Base Camp', isBaseCamp: true, isActive: true }),
-      new Checkpoint({ id: 'mid', x: 1570, y: 180, label: 'Mid Ridge', isActive: false }),
-      new Checkpoint({ id: 'summit', x: 2050, y: -20, label: 'Sky Summit', isActive: false }),
-      new Checkpoint({ id: 'peak', x: 840, y: -100, label: 'Grand Peak', isActive: false }),
-      new Checkpoint({ id: 'runway', x: 2150, y: 320, label: 'Far Runway', isActive: false }),
+      new Checkpoint(120, 340, 'Base Camp', true),
+      new Checkpoint(1570, 180, 'Mid Ridge', false),
+      new Checkpoint(2050, -20, 'Sky Summit', false),
+      new Checkpoint(840, -100, 'Grand Peak', false),
+      new Checkpoint(2150, 320, 'Far Runway', false),
     ];
   }
 
@@ -2760,12 +2984,11 @@ class World {
     }
 
     for (const cp of this.checkpoints) {
-      cp.update(dt, player, particleSystem);
-      if (cp.isNearPlayer && input.interactJustPressed && !cp.isActive) {
+      const justActivated = cp.update(dt, player, particleSystem, input);
+      if (justActivated) {
         for (const otherCp of this.checkpoints) {
-          otherCp.isActive = false;
+          if (otherCp !== cp) otherCp.deactivate();
         }
-        cp.activate(particleSystem);
         if (onCheckpointActivated) {
           onCheckpointActivated(cp);
         }
@@ -2779,7 +3002,6 @@ class World {
     for (const plat of this.platforms) {
       plat.draw(ctx);
 
-      // Dynamic Pink Specular Reflection on Platform Surface from Lantern
       if (CONFIG.lighting.enabled && player && player.getLanternWorldPos) {
         const lanternPos = player.getLanternWorldPos();
         const radius = player.getLanternRadius();
@@ -2844,7 +3066,7 @@ class World {
     }
 
     for (const cp of this.checkpoints) {
-      cp.draw(ctx);
+      cp.draw(ctx, player);
     }
   }
 
@@ -2899,7 +3121,6 @@ class Game {
     this.player = new Player(CONFIG.world.spawnPoint.x, CONFIG.world.spawnPoint.y);
     this.camera = new Camera(CONFIG.canvas.width, CONFIG.canvas.height);
 
-    // Goal Zone finish line on Grand Peak
     this.goalZone = new GoalZone({ x: 750, y: -164, width: 80, height: 64 });
 
     this.timerState = 'READY';
@@ -2913,7 +3134,6 @@ class Game {
     this.player.y = this.currentSpawnPoint.y;
     this.camera.snapTo(this.player.centerX, this.player.centerY);
 
-    // Enemies placed along challenging corridors
     this.enemies = [
       new Enemy({ type: 'walker', platform: this.world.platforms[4], x: 830, speed: 75 }),
       new Enemy({ type: 'walker', platform: this.world.platforms[9], x: 2020, speed: 90 }),
@@ -2936,7 +3156,6 @@ class Game {
       maxTime: 2.6,
     };
 
-    // Offscreen lighting canvas
     this.lightCanvas = document.createElement('canvas');
     this.lightCanvas.width = CONFIG.canvas.width;
     this.lightCanvas.height = CONFIG.canvas.height;
@@ -3272,7 +3491,6 @@ class Game {
 
     this.camera.restore(ctx);
 
-    // Darkness & Lantern Illumination Layer Pass
     if (CONFIG.lighting.enabled) {
       this.renderLighting(ctx);
     }
@@ -3321,7 +3539,6 @@ class Game {
 
     ctx.drawImage(this.lightCanvas, 0, 0);
 
-    // Magical Pink Light Wash
     this.camera.apply(ctx);
     ctx.save();
 
@@ -3370,7 +3587,7 @@ class Game {
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 10);
+    this.world.platforms[0].drawRoundedRect(ctx, bannerX, bannerY, bannerW, bannerH, 10);
     ctx.fill();
     ctx.stroke();
 
