@@ -28,6 +28,13 @@ No build tools, npm packages, or bundlers required. Double click `index.html` to
 - **Winch Reeling**: Hold <kbd>W</kbd> to reel in (increasing angular speed via conservation of angular momentum) or <kbd>S</kbd> to extend cable length.
 - **Boost Jump / Slingshot**: Press <kbd>Space</kbd> or release at peak swing to catapult across huge gaps!
 - **Procedural Sound FX**: Zero-dependency Web Audio API sound synthesizer for cable zips, latch clinks, reel motors, and rocket boost whooshes.
+| Action | Keys |
+| :--- | :--- |
+| **Move Left / Right** | <kbd>A</kbd> / <kbd>D</kbd> or <kbd>←</kbd> / <kbd>→</kbd> |
+| **Jump / Wall Jump** | <kbd>Space</kbd> / <kbd>W</kbd> / <kbd>↑</kbd> |
+| **Wall Slide** | Move into / contact any wall while falling |
+| **Respawn** | <kbd>R</kbd> |
+| **Toggle Debug Info** | <kbd>F3</kbd> or <kbd>`</kbd> (Backquote) |
 
 ---
 
@@ -70,6 +77,18 @@ grapple: {
   maxSwingSpeed: 440,     // Top speed clamp
   boostMaxSpeed: 380,     // Boost speed clamp
   projectileSpeed: 2800,  // Hook firing speed
+physics: {
+  gravity: 1400,          // Fall acceleration
+  moveSpeed: 340,         // Top horizontal speed
+  acceleration: 2400,     // Time to reach top speed on ground
+  jumpForce: 560,         // Jump height
+  jumpCutMultiplier: 0.45,// Variable jump height multiplier on key release
+  coyoteTime: 0.12,       // Grace period after walking off edges
+  jumpBufferTime: 0.12,   // Window to press jump before landing
+  wallSlideSpeed: 110,    // Downward slide speed when in contact with a wall
+  wallJumpForceY: 540,    // Vertical jump height from a wall
+  wallJumpForceX: 210,    // Outward impulse away from wall
+  wallCoyoteTime: 0.10,   // Grace period to jump after leaving a wall
 }
 ```
 
