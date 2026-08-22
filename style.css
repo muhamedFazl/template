@@ -65,6 +65,30 @@ body {
   color: #c9d1d9;
 }
 
+.score-badge {
+  background: rgba(14, 17, 23, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+  transition: transform 0.15s ease-out;
+}
+
+.score-badge.pop {
+  animation: scorePop 0.25s ease-out;
+}
+
+@keyframes scorePop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
 .bottom-bar {
   display: flex;
   justify-content: center;
