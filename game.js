@@ -3162,6 +3162,7 @@ class Game {
     this.lightCtx = this.lightCanvas.getContext('2d');
 
     this.respawnCount = 0;
+    this.killsCount = 0;
     this.debugMode = false;
 
     this.lastTime = performance.now();
@@ -3438,6 +3439,45 @@ class Game {
     this.input.resetFrame();
   }
 
+  checkEnemyCollisions(dt) {
+    for (const enemy of this.enemies) {
+      if (enemy.isDead) continue;
+
+      if (this.player.checkCollision(this.player, enemy)) {
+        const playerBottom = this.player.y + this.player.height;
+        const enemyTop = enemy.y;
+
+        const isFalling = this.player.vy >= 0;
+        const wasAbove = (playerBottom - this.player.vy * dt) <= (enemyTop + 15);
+
+        if (isFalling && wasAbove) {
+          // Stomp!
+          enemy.isDead = true;
+          this.killsCount++;
+          // Bounce player up
+          this.player.vy = -CONFIG.physics.jumpForce * 0.75;
+          this.player.scaleX = 0.8;
+          this.player.scaleY = 1.35;
+
+          // Emit death particles in enemy color
+          this.particleSystem.emit(enemy.centerX, enemy.centerY, 20, {
+            color: CONFIG.colors.enemyBody,
+            sizeMin: 3,
+            sizeMax: 8,
+            speedMin: 80,
+            speedMax: 220,
+            lifeMin: 0.35,
+            lifeMax: 0.75,
+          });
+        } else {
+          // Touched in any other way -> Player dies & enemies reset
+          this.triggerRespawn();
+          break;
+        }
+      }
+    }
+  }
+
   checkGoalCollision(player, goal) {
     return (
       player.x < goal.x + goal.width &&
@@ -3449,6 +3489,12 @@ class Game {
 
   triggerRespawn() {
     this.respawnCount++;
+    this.killsCount = 0;
+    this.player.respawn(CONFIG.world.spawnPoint, this.particleSystem);
+    // Revive all enemies
+    for (const enemy of this.enemies) {
+      enemy.reset();
+    }
     this.resetRun();
     for (const enemy of this.enemies) {
       enemy.reset();
@@ -3558,6 +3604,26 @@ class Game {
 
     ctx.restore();
     this.camera.restore(ctx);
+  }
+
+  drawScoreboard(ctx) {
+    ctx.save();
+    
+    // Mario-style font styling (bold monospace with clean shadow)
+    ctx.font = "bold 28px 'Courier New', 'Lucida Console', monospace";
+    ctx.textAlign = "center";
+    
+    const killsText = `KILLS x ${String(this.killsCount).padStart(2, '0')}`;
+    
+    // Draw thick black drop shadow
+    ctx.fillStyle = "#000000";
+    ctx.fillText(killsText, this.canvas.width / 2 + 3, 46 + 3);
+    
+    // Draw solid white text on top
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(killsText, this.canvas.width / 2, 46);
+
+    ctx.restore();
   }
 
   drawCheckpointBanner(ctx, w, h) {
